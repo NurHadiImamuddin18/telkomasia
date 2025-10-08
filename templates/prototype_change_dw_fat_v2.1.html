@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Change DW & FAT System</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fa; }
+    .page { display: none; padding: 40px; }
+    .active { display: block; }
+    .card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 900px; margin: auto; }
+    h1, h2 { color: #e20a0a; }
+    input, select { padding: 8px; margin: 5px 0 10px 0; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; }
+    button { background: #ff5b10; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .sidebar { position: fixed; top: 0; left: 0; width: 220px; height: 100%; background: #fff; border-right: 1px solid #ddd; padding: 20px; display: none; }
+    .sidebar.active { display: block; }
+    .content { margin-left: 240px; padding: 20px; }
+    .menu-btn { display: block; margin-bottom: 10px; background: #f5f7fa; color: #1a3d7c; border: 1px solid #ccc; width: 100%; text-align: left; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+    .actions button { margin-right: 5px; margin-bottom: 5px; }
+    .material-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .material-row select { flex: 3; }
+    .material-row input { flex: 2; }
+    .material-row button { background: red; flex-shrink: 0; padding: 8px 12px; }
+    .foto-pair { display: flex; justify-content: space-between; gap: 20px; }
+    .foto-section { flex: 1; }
+    .foto-section h3 { margin-bottom: 5px; }
+    .foto-slot { margin-bottom: 10px; }
+    .foto-slot img { width: 150px; height: 100px; object-fit: cover; border: 1px solid #ccc; border-radius: 6px; margin-top: 5px; }
+    .foto-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: flex-start; padding: 6px 0; }
+    .foto-item { display: flex; flex-direction: column; align-items: center; width: calc(20% - 10px); box-sizing: border-box; min-width: 120px; }
+    .foto-item img { width: 100%; height: 100px; object-fit: cover; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; }
+    .foto-item small { margin-top: 6px; text-align: center; display: block; word-break: break-word; }
+    .preview { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+    .preview-item { display: flex; flex-direction: column; align-items: center; width: 160px; }
+    .preview img { width: 160px; height: 100px; object-fit: cover; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 5px; }
+    .preview input { width: 100%; font-size: 12px; padding: 2px; text-align: center; }
+    .modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
+    .modal-content { background: #fff; padding: 24px; border-radius: 8px; max-width: 90vw; width: 900px; box-sizing: border-box; max-height: 90vh; overflow-y: auto; position: relative; }
+    .close { position: absolute; top: 10px; right: 15px; cursor: pointer; font-size: 20px; }
+    #imagePreviewModal { background: rgba(0,0,0,0.85); z-index: 20; display: none; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+    #imagePreviewModal img { max-width: 90vw; max-height: 90vh; object-fit: contain; }
+    #imagePreviewModal .close { color: #fff; font-size: 40px; top: 20px; right: 35px; position: absolute; cursor: pointer; }
+    .user-info { padding: 10px; background: #f0f0f0; border-radius: 6px; margin-bottom: 10px; font-size: 14px; }
+    .loading { display: none; text-align: center; padding: 10px; color: #666; }
+    .loading.active { display: block; }
+    .readonly-notice { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 6px; margin-bottom: 15px; color: #856404; }
+    @media (max-width: 700px) {
+      .foto-item { width: calc(50% - 10px); min-width: 0; }
+      .modal-content { width: 95vw; padding: 16px; }
+      .content { margin-left: 0; }
+      .sidebar { width: 100%; position: relative; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loginPage" class="page active">
+    <div class="card">
+      <h1>Login</h1>
+      <p>Silakan login untuk masuk ke sistem Change DW & FAT</p>
+      <label>Username</label>
+      <input type="text" id="loginUsername" placeholder="Masukkan username" />
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="Masukkan password" onkeypress="if(event.key==='Enter') login()" />
+      <p id="loginError" style="color: red; display: none;">Username atau password salah!</p>
+      <button onclick="login()">Login</button>
+      <div class="loading" id="loginLoading">Memproses...</div>
+    </div>
+  </div>
+
+  <div id="mainPage" class="page">
+    <div class="sidebar active" id="sidebar">
+      <h3>Menu</h3>
+      <div class="user-info">
+        <strong>User:</strong><br>
+        <span id="currentUser"></span><br>
+        <small id="userRole"></small>
+      </div>
+      <button class="menu-btn" onclick="openForm('DW')" id="btnChangeDW">Change DW</button>
+      <button class="menu-btn" onclick="openForm('FAT')" id="btnChangeFAT">Change FAT</button>
+      <button class="menu-btn" onclick="showResume()">Resume</button>
+      <button class="menu-btn" onclick="showAddAccount()" id="addAccountBtn" style="display:none;">Tambah Akun</button>
+      <button class="menu-btn" onclick="logout()" style="background: #dc3545; color: white; margin-top: 20px;">Logout</button>
+    </div>
+    <div class="content">
+      <div id="formPage" class="card" style="display:none;"></div>
+      <div id="resumePage" class="card" style="display:none;"></div>
+      <div id="addAccountPage" class="card" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <div id="imagePreviewModal" onclick="closeImagePreview()">
+    <span class="close" onclick="event.stopPropagation(); closeImagePreview();">&times;</span>
+    <img id="fullSizeImage" onclick="event.stopPropagation();">
+  </div>
+
+  <script>
+    const API_URL = '/api';
+    let currentType = "";
+    let resumeData = [];
+    let selectedFiles = [];
+    let fatPhotos = {};
+    let currentUser = null;
+
+    // Helper function untuk mendapatkan headers dengan role
+    function getAuthHeaders() {
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (currentUser && currentUser.role) {
+        headers['X-User-Role'] = currentUser.role;
+      }
+      
+      return headers;
+    }
+
+    function isAdmin() {
+      return currentUser && currentUser.role === 'admin';
+    }
+
+    function getMaterialOptions(type) {
+        if (type === "DW") {
+            return `<option value="SN ONT Lama">SN ONT Lama</option><option value="SN ONT Baru">SN ONT Baru</option><option value="Kabel Precon">Kabel Precon</option><option value="ONT">ONT</option><option value="Paku Clamp">Paku Clamp</option><option value="Cable Ties">Cable Ties</option><option value="Label ID">Label ID</option><option value="Precon">Precon</option>`;
+        } else {
+            return `<option value="Box">Box</option><option value="Pigtail">Pigtail</option><option value="Protektor">Protektor</option><option value="Barel">Barel</option><option value="Isolasi">Isolasi</option><option value="Ties">Ties</option><option value="Kabel DW">Kabel DW</option><option value="Spliter">Spliter</option>`;
+        }
+    }
+
+    async function login() {
+      const username = document.getElementById('loginUsername').value;
+      const password = document.getElementById('loginPassword').value;
+      const loading = document.getElementById('loginLoading');
+      const errorMsg = document.getElementById('loginError');
+      
+      if (!username || !password) {
+        errorMsg.innerText = 'Username dan password harus diisi!';
+        errorMsg.style.display = 'block';
+        return;
+      }
+      
+      loading.classList.add('active');
+      errorMsg.style.display = 'none';
+      
+      try {
+        const response = await fetch(`${API_URL}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        loading.classList.remove('active');
+        
+        if (data.success) {
+          currentUser = data.user;
+          document.getElementById('loginPage').classList.remove('active');
+          document.getElementById('mainPage').classList.add('active');
+          document.getElementById('currentUser').innerText = currentUser.username;
+          document.getElementById('userRole').innerText = currentUser.role === 'admin' ? '(Administrator)' : '(User - View Only)';
+          
+          if (isAdmin()) {
+            document.getElementById('addAccountBtn').style.display = 'block';
+            document.getElementById('btnChangeDW').style.display = 'block';
+            document.getElementById('btnChangeFAT').style.display = 'block';
+          } else {
+            document.getElementById('addAccountBtn').style.display = 'none';
+            document.getElementById('btnChangeDW').style.display = 'none';
+            document.getElementById('btnChangeFAT').style.display = 'none';
+          }
+          
+          await loadOrders();
+          showResume();
+        } else {
+          errorMsg.innerText = 'Username atau password salah!';
+          errorMsg.style.display = 'block';
+        }
+      } catch (error) {
+        loading.classList.remove('active');
+        errorMsg.innerText = 'Error: ' + error.message;
+        errorMsg.style.display = 'block';
+      }
+    }
+
+    function logout() {
+      if (confirm('Apakah Anda yakin ingin logout?')) {
+        currentUser = null;
+        resumeData = [];
+        document.getElementById('mainPage').classList.remove('active');
+        document.getElementById('loginPage').classList.add('active');
+        document.getElementById('loginUsername').value = '';
+        document.getElementById('loginPassword').value = '';
+        document.getElementById('loginError').style.display = 'none';
+        document.getElementById('addAccountBtn').style.display = 'none';
+      }
+    }
+
+    async function loadOrders() {
+      try {
+        const response = await fetch(`${API_URL}/orders`);
+        const data = await response.json();
+        if (data.success) {
+          resumeData = data.orders;
+        } else {
+          resumeData = [];
+        }
+      } catch (error) {
+        console.error('Error loading orders:', error);
+        resumeData = [];
+      }
+    }
+
+    function openForm(type) {
+      if (!isAdmin()) {
+        alert('Akses ditolak! Hanya Admin yang dapat mengisi form.');
+        return;
+      }
+      
+      currentType = type;
+      document.getElementById('formPage').style.display = "block";
+      document.getElementById('resumePage').style.display = "none";
+      document.getElementById('addAccountPage').style.display = "none";
+      const materialOptions = getMaterialOptions(type);
+      selectedFiles = [];
+      fatPhotos = {};
+
+      if (type === "FAT") {
+        document.getElementById('formPage').innerHTML = `<h2>${type} → Input Data</h2><label>FAT Name</label><input type="text" id="FATName" placeholder="Masukkan FAT Name" /><label>Nama Teknisi</label><input type="text" id="namaTeknisi" placeholder="Nama teknisi" /><div id="materialContainer"><label>Material</label><div class="material-row"><select>${materialOptions}</select><input type="text" placeholder="Qty / Keterangan" /><button onclick="removeMaterial(this)">x</button></div></div><button type="button" onclick="addMaterial()">+ Tambah Material</button><hr style="margin: 20px 0;"><div class="foto-pair"><div class="foto-section"><h3>Redaman In</h3><div class="foto-slot">Before: <input type="file" onchange="handleFatPhoto(event,'redamanInBefore')" accept="image/*"><div id="prev-redamanInBefore"></div></div><div class="foto-slot">After: <input type="file" onchange="handleFatPhoto(event,'redamanInAfter')" accept="image/*"><div id="prev-redamanInAfter"></div></div></div><div class="foto-section"><h3>Redaman Out</h3><div class="foto-slot">Before: <input type="file" onchange="handleFatPhoto(event,'redamanOutBefore')" accept="image/*"><div id="prev-redamanOutBefore"></div></div><div class="foto-slot">After: <input type="file" onchange="handleFatPhoto(event,'redamanOutAfter')" accept="image/*"><div id="prev-redamanOutAfter"></div></div></div></div><div class="foto-pair"><div class="foto-section"><h3>Tampak Depan FAT</h3><div class="foto-slot">Before: <input type="file" onchange="handleFatPhoto(event,'depanBefore')" accept="image/*"><div id="prev-depanBefore"></div></div><div class="foto-slot">Proses: <input type="file" onchange="handleFatPhoto(event,'depanProses')" accept="image/*"><div id="prev-depanProses"></div></div><div class="foto-slot">After: <input type="file" onchange="handleFatPhoto(event,'depanAfter')" accept="image/*"><div id="prev-depanAfter"></div></div></div><div class="foto-section"><h3>Tampak Dalam FAT</h3><div class="foto-slot">Before: <input type="file" onchange="handleFatPhoto(event,'dalamBefore')" accept="image/*"><div id="prev-dalamBefore"></div></div><div class="foto-slot">Proses: <input type="file" onchange="handleFatPhoto(event,'dalamProses')" accept="image/*"><div id="prev-dalamProses"></div></div><div class="foto-slot">After: <input type="file" onchange="handleFatPhoto(event,'dalamAfter')" accept="image/*"><div id="prev-dalamAfter"></div></div></div></div><button onclick="submitFatData()">Submit</button><div class="loading" id="submitLoading">Menyimpan data...</div>`;
+      } else {
+        document.getElementById('formPage').innerHTML = `<h2>${type} → Input Data</h2><label>Order ID</label><input type="text" id="orderId" placeholder="Masukkan Order ID" /><label>Nama Teknisi</label><input type="text" id="namaTeknisi" placeholder="Nama teknisi" /><div id="materialContainer"><label>Material</label><div class="material-row"><select>${materialOptions}</select><input type="text" placeholder="Qty / Keterangan" /><button onclick="removeMaterial(this)">x</button></div></div><button type="button" onclick="addMaterial()">+ Tambah Material</button><hr style="margin: 20px 0;"><input type="file" id="foto" multiple onchange="previewFiles()" accept="image/*" /><div id="preview" class="preview"></div><p id="fotoCount"></p><button onclick="submitData()">Submit</button><div class="loading" id="submitLoading">Menyimpan data...</div>`;
+      }
+    }
+
+    function handleFatPhoto(event, key) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          fatPhotos[key] = e.target.result;
+          document.getElementById('prev-' + key).innerHTML = `<img src="${e.target.result}" style="width:150px; height:100px; object-fit:cover;">`;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    async function submitFatData() {
+      const orderId = document.getElementById('FATName').value;
+      const namaTeknisi = document.getElementById('namaTeknisi').value;
+      const requiredKeys = ['redamanInBefore','redamanInAfter','redamanOutBefore','redamanOutAfter','depanBefore','depanProses','depanAfter','dalamBefore','dalamProses','dalamAfter'];
+      
+      if (!orderId || !namaTeknisi) {
+        alert("FAT Name dan Nama Teknisi wajib diisi!");
+        return;
+      }
+      
+      for (let k of requiredKeys) {
+        if (!fatPhotos[k]) {
+          alert("Semua foto wajib diisi (10 foto)!");
+          return;
+        }
+      }
+      
+      const loading = document.getElementById('submitLoading');
+      loading.classList.add('active');
+      
+      const entry = {
+        orderId,
+        type: currentType,
+        namaTeknisi,
+        materials: getMaterials(),
+        fotoCount: 10,
+        fatPhotos,
+        createdBy: currentUser.username
+      };
+      
+      try {
+        const response = await fetch(`${API_URL}/orders`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(entry)
+        });
+        
+        const data = await response.json();
+        loading.classList.remove('active');
+        
+        if (data.success) {
+          alert(`Data FAT "${orderId}" berhasil disimpan!`);
+          await loadOrders();
+          openForm(currentType);
+        } else {
+          alert('Error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        loading.classList.remove('active');
+        alert('Error: ' + error.message);
+      }
+    }
+
+    function addMaterial() {
+      const container = document.getElementById('materialContainer');
+      const options = getMaterialOptions(currentType);
+      const row = document.createElement("div");
+      row.className = "material-row";
+      row.innerHTML = `<select>${options}</select><input type="text" placeholder="Qty / Keterangan" /><button onclick="removeMaterial(this)">x</button>`;
+      container.appendChild(row);
+    }
+
+    function removeMaterial(btn) { btn.parentElement.remove(); }
+
+    function getMaterials() {
+      const materials = [];
+      document.querySelectorAll('#materialContainer .material-row').forEach(row => {
+        const mat = row.querySelector("select").value;
+        const qty = row.querySelector("input").value;
+        if (mat) materials.push(mat + (qty ? " ("+qty+")" : ""));
+      });
+      return materials;
+    }
+
+    function previewFiles() {
+      const files = Array.from(document.getElementById("foto").files);
+      if (files.length > 5) {
+        alert("Maksimal 5 foto! (Firestore limit 1MB per dokumen)");
+        document.getElementById("foto").value = '';
+        return;
+      }
+      selectedFiles = selectedFiles.concat(files.map(file => ({ file, caption: "" })));
+      renderPreview();
+      document.getElementById("fotoCount").innerText = `Total foto: ${selectedFiles.length}`;
+    }
+
+    function renderPreview() {
+      const preview = document.getElementById("preview");
+      preview.innerHTML = "";
+      selectedFiles.forEach((item, index) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          const container = document.createElement("div");
+          container.className = "preview-item";
+          const img = document.createElement("img");
+          img.src = e.target.result;
+          const input = document.createElement("input");
+          input.type = "text";
+          input.placeholder = "Keterangan";
+          input.value = item.caption || "";
+          input.oninput = ev => selectedFiles[index].caption = ev.target.value;
+          container.appendChild(img);
+          container.appendChild(input);
+          preview.appendChild(container);
+        };
+        reader.readAsDataURL(item.file);
+      });
+    }
+    
+    async function submitData() {
+      const orderId = document.getElementById('orderId').value;
+      const namaTeknisi = document.getElementById('namaTeknisi').value;
+      const materials = getMaterials();
+      
+      if (!orderId || !namaTeknisi || materials.length === 0) {
+        alert("Lengkapi semua field sebelum submit!");
+        return;
+      }
+      
+      const loading = document.getElementById('submitLoading');
+      loading.classList.add('active');
+      
+      const entry = {
+        type: currentType,
+        orderId,
+        namaTeknisi,
+        materials,
+        fotoCount: selectedFiles.length,
+        fotoData: [],
+        createdBy: currentUser.username
+      };
+      
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const reader = new FileReader();
+        await new Promise((resolve) => {
+          reader.onload = (e) => {
+            entry.fotoData.push({ src: e.target.result, caption: selectedFiles[i].caption });
+            resolve();
+          };
+          reader.readAsDataURL(selectedFiles[i].file);
+        });
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/orders`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(entry)
+        });
+        
+        const data = await response.json();
+        loading.classList.remove('active');
+        
+        if (data.success) {
+          alert(`Data DW "${orderId}" berhasil disimpan!`);
+          await loadOrders();
+          openForm(currentType);
+        } else {
+          alert('Error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        loading.classList.remove('active');
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function showResume() {
+      document.getElementById('formPage').style.display = "none";
+      document.getElementById('resumePage').style.display = "block";
+      document.getElementById('addAccountPage').style.display = "none";
+      
+      await loadOrders();
+      
+      let readOnlyNotice = '';
+      if (!isAdmin()) {
+        readOnlyNotice = '<div class="readonly-notice">Anda login sebagai User biasa. Anda hanya dapat melihat data tanpa bisa mengubah atau menghapus.</div>';
+      }
+      
+      let rows = resumeData.map((item) => {
+        const editBtn = isAdmin() ? `<button onclick="editOrder('${item.id}')">Edit</button>` : '';
+        const deleteBtn = isAdmin() ? `<button onclick="deleteOrder('${item.id}')" style="background:#dc3545;">Hapus</button>` : '';
+        return `<tr><td>${item.orderId}</td><td>${item.namaTeknisi}</td><td>${item.type}</td><td>${item.materials.join(", ")}</td><td>${item.fotoCount}</td><td class='actions'><button onclick="viewDetail('${item.id}')">View</button>${editBtn}${deleteBtn}</td></tr>`;
+      }).join("");
+      
+      if (!rows) rows = "<tr><td colspan='6'>Belum ada data</td></tr>";
+      
+      document.getElementById('resumePage').innerHTML = `<h2>Resume</h2>${readOnlyNotice}<input type="text" placeholder="Search by Order ID" oninput="filterResume(this.value)" /><table><thead><tr><th>Order ID</th><th>Nama Teknisi</th><th>Tipe</th><th>Material</th><th>Jumlah Foto</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function filterResume(query) {
+      const tableBody = document.querySelector("#resumePage tbody");
+      query = query.toLowerCase();
+      const filtered = resumeData.filter(item => item.orderId.toLowerCase().includes(query));
+      
+      let rows = filtered.map((item) => {
+        const editBtn = isAdmin() ? `<button onclick="editOrder('${item.id}')">Edit</button>` : '';
+        const deleteBtn = isAdmin() ? `<button onclick="deleteOrder('${item.id}')" style="background:#dc3545;">Hapus</button>` : '';
+        return `<tr><td>${item.orderId}</td><td>${item.namaTeknisi}</td><td>${item.type}</td><td>${item.materials.join(", ")}</td><td>${item.fotoCount}</td><td class='actions'><button onclick="viewDetail('${item.id}')">View</button>${editBtn}${deleteBtn}</td></tr>`;
+      }).join("");
+      
+      if (!rows) rows = "<tr><td colspan='6'>Data tidak ditemukan</td></tr>";
+      tableBody.innerHTML = rows;
+    }
+
+    async function viewDetail(docId) {
+      try {
+        const response = await fetch(`${API_URL}/orders/${docId}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+          alert('Error: ' + data.message);
+          return;
+        }
+        
+        const item = data.order;
+        const materialOptions = getMaterialOptions(item.type);
+        
+        let materialRowsHtml = '';
+        item.materials.forEach(materialString => {
+          let name = materialString, qty = "";
+          const match = materialString.match(/(.*) \((.*)\)$/);
+          if (match) { name = match[1]; qty = match[2]; }
+          materialRowsHtml += `<div class="material-row"><select disabled>${materialOptions}</select><input type="text" placeholder="Qty / Keterangan" value="${qty}" disabled/></div>`;
+        });
+        
+        let html = `<h3>Detail Order ${item.orderId}</h3><p><b>Nama Teknisi:</b> ${item.namaTeknisi}</p><p><b>Tipe:</b> ${item.type}</p><p><b>Materials:</b></p><div id="modalMaterialContainer">${materialRowsHtml}</div><hr style="margin: 20px 0;"><p><b>Jumlah Foto:</b> ${item.fotoCount}</p>`;
+        
+        if (item.fotoData && item.fotoData.length > 0) {
+          html += `<div><b>Foto Evidence:</b><div class='foto-grid'>`;
+          item.fotoData.forEach((f) => {
+            html += `<div class='foto-item'><img src="${f.src}" alt="Foto Evidence" onclick="showImagePreview(this.src)"> <small>${f.caption}</small></div>`;
+          });
+          html += `</div></div>`;
+        }
+        
+        if (item.type === "FAT" && item.fatPhotos) {
+          const fatLabels = {
+            redamanInBefore: "Redaman IN - Before",
+            redamanInAfter: "Redaman IN - After",
+            redamanOutBefore: "Redaman OUT - Before",
+            redamanOutAfter: "Redaman OUT - After",
+            depanBefore: "Tampak Depan FAT - Before",
+            depanProses: "Tampak Depan FAT - Proses",
+            depanAfter: "Tampak Depan FAT - After",
+            dalamBefore: "Tampak Dalam FAT - Before",
+            dalamProses: "Tampak Dalam FAT - Proses",
+            dalamAfter: "Tampak Dalam FAT - After"
+          };
+          html += `<div><b>Foto FAT Evidence:</b><div class='foto-grid'>`;
+          Object.entries(fatLabels).forEach(([key, label]) => {
+            if (item.fatPhotos[key]) {
+              html += `<div class='foto-item'><img src="${item.fatPhotos[key]}" alt="${label}" onclick="showImagePreview(this.src)"> <small>${label}</small></div>`;
+            }
+          });
+          html += `</div></div>`;
+        }
+        
+        document.getElementById('modalBody').innerHTML = html;
+        document.getElementById('modal').style.display = 'flex';
+        
+        setTimeout(() => {
+          document.querySelectorAll('#modalMaterialContainer .material-row').forEach((row, materialIndex) => {
+            const materialString = item.materials[materialIndex];
+            let name = materialString;
+            const match = materialString.match(/(.*) \((.*)\)$/);
+            if (match) { name = match[1]; }
+            row.querySelector('select').value = name;
+          });
+        }, 0);
+        
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById("modal").style.display = "none";
+    }
+
+    async function showAddAccount() {
+      if (!isAdmin()) {
+        alert('Akses ditolak! Hanya Admin yang dapat mengelola akun.');
+        return;
+      }
+      
+      document.getElementById('formPage').style.display = "none";
+      document.getElementById('resumePage').style.display = "none";
+      document.getElementById('addAccountPage').style.display = "block";
+      
+      document.getElementById('addAccountPage').innerHTML = `<h2>Manajemen Akun</h2><div class="loading active">Memuat data...</div>`;
+      
+      try {
+        const response = await fetch(`${API_URL}/users`);
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.message || 'Failed to load users');
+        }
+        
+        let userRows = data.users.map((user) => {
+          return `<tr><td>${user.username}</td><td>••••••••</td><td>${user.role === 'admin' ? 'Admin' : 'User'}</td><td class='actions'><button onclick="deleteUser('${user.id}', '${user.role}')" ${user.role === 'admin' ? 'disabled' : ''}>Hapus</button></td></tr>`;
+        }).join("");
+        
+        document.getElementById('addAccountPage').innerHTML = `
+          <h2>Manajemen Akun</h2>
+          <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <h3>Tambah Akun Baru</h3>
+            <label>Username</label>
+            <input type="text" id="newUsername" placeholder="Masukkan username baru" />
+            <label>Password</label>
+            <input type="password" id="newPassword" placeholder="Masukkan password" />
+            <label>Role</label>
+            <select id="newRole">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button onclick="addNewAccount()" style="margin-top: 10px;">Tambah Akun</button>
+            <p id="addAccountMessage" style="margin-top: 10px; display: none;"></p>
+          </div>
+          <h3>Daftar Akun</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Password</th>
+                <th>Role</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody>${userRows}</tbody>
+          </table>
+        `;
+      } catch (error) {
+        console.error('Error loading users:', error);
+        document.getElementById('addAccountPage').innerHTML = `
+          <h2>Manajemen Akun</h2>
+          <p style="color: red;">Error: ${error.message}</p>
+          <p>Pastikan Flask server berjalan di http://localhost:5000</p>
+          <button onclick="showAddAccount()">Coba Lagi</button>
+        `;
+      }
+    }
+
+    async function addNewAccount() {
+      const username = document.getElementById('newUsername').value.trim();
+      const password = document.getElementById('newPassword').value.trim();
+      const role = document.getElementById('newRole').value;
+      const message = document.getElementById('addAccountMessage');
+      
+      if (!username || !password) {
+        message.style.color = 'red';
+        message.innerText = 'Username dan password harus diisi!';
+        message.style.display = 'block';
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/users`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ username, password, role })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          message.style.color = 'green';
+          message.innerText = `Akun "${username}" berhasil ditambahkan!`;
+          message.style.display = 'block';
+          document.getElementById('newUsername').value = '';
+          document.getElementById('newPassword').value = '';
+          document.getElementById('newRole').value = 'user';
+          setTimeout(() => { showAddAccount(); }, 1500);
+        } else {
+          message.style.color = 'red';
+          message.innerText = data.message || 'Gagal menambahkan akun';
+          message.style.display = 'block';
+        }
+      } catch (error) {
+        message.style.color = 'red';
+        message.innerText = 'Error: ' + error.message;
+        message.style.display = 'block';
+      }
+    }
+
+    async function deleteUser(userId, role) {
+      if (role === 'admin') {
+        alert('Akun admin tidak dapat dihapus!');
+        return;
+      }
+      
+      if (!confirm('Hapus akun ini?')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/users/${userId}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('Akun berhasil dihapus!');
+          showAddAccount();
+        } else {
+          alert('Error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Fungsi untuk menampilkan gambar full screen
+    function showImagePreview(src) {
+      document.getElementById('fullSizeImage').src = src;
+      document.getElementById('imagePreviewModal').style.display = 'flex';
+    }
+
+    function closeImagePreview() {
+      document.getElementById('imagePreviewModal').style.display = 'none';
+    }
+
+    async function editOrder(docId) {
+      if (!isAdmin()) {
+        alert('Akses ditolak! Hanya Admin yang dapat mengedit data.');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/orders/${docId}`);
+        const data = await response.json();
+        
+        if (!data.success) {
+          alert('Error: ' + data.message);
+          return;
+        }
+        
+        const item = data.order;
+        currentType = item.type;
+        
+        document.getElementById('formPage').style.display = "block";
+        document.getElementById('resumePage').style.display = "none";
+        document.getElementById('addAccountPage').style.display = "none";
+        
+        const materialOptions = getMaterialOptions(item.type);
+        
+        if (item.type === "FAT") {
+          document.getElementById('formPage').innerHTML = `<h2>Edit ${item.type} - ${item.orderId}</h2><label>FAT Name</label><input type="text" id="FATName" value="${item.orderId}" /><label>Nama Teknisi</label><input type="text" id="namaTeknisi" value="${item.namaTeknisi}" /><div id="materialContainer"><label>Material</label></div><button type="button" onclick="addMaterial()">+ Tambah Material</button><hr style="margin: 20px 0;"><div class="foto-pair"><div class="foto-section"><h3>Redaman In</h3><div class="foto-slot">Before: <input type="file" onchange="handleFatPhoto(event,'redamanInBefore')" accept="image/*"><div id="prev-redamanInBefore"></div></div><div class="foto-slot">After: <input type="file" onchange="handleFatPhoto(event,'redamanInAfter')" accept="image/*"><div id="prev-redamanInAfter"></div></div></div><div class="foto-section"><h3>Redaman Out</h3><div class="foto-slot">Before: <input type="file" onchange="handleFatPhoto(event,'redamanOutBefore')" accept="image/*"><div id="prev-redamanOutBefore"></div></div><div class="foto-slot">After: <input type="file" onchange="handleFatPhoto(event,'redamanOutAfter')" accept="image/*"><div id="prev-redamanOutAfter"></div></div></div></div><div class="foto-pair"><div class="foto-section"><h3>Tampak Depan FAT</h3><div class="foto-slot">Before: <input type="file" onchange="handleFatPhoto(event,'depanBefore')" accept="image/*"><div id="prev-depanBefore"></div></div><div class="foto-slot">Proses: <input type="file" onchange="handleFatPhoto(event,'depanProses')" accept="image/*"><div id="prev-depanProses"></div></div><div class="foto-slot">After: <input type="file" onchange="handleFatPhoto(event,'depanAfter')" accept="image/*"><div id="prev-depanAfter"></div></div></div><div class="foto-section"><h3>Tampak Dalam FAT</h3><div class="foto-slot">Before: <input type="file" onchange="handleFatPhoto(event,'dalamBefore')" accept="image/*"><div id="prev-dalamBefore"></div></div><div class="foto-slot">Proses: <input type="file" onchange="handleFatPhoto(event,'dalamProses')" accept="image/*"><div id="prev-dalamProses"></div></div><div class="foto-slot">After: <input type="file" onchange="handleFatPhoto(event,'dalamAfter')" accept="image/*"><div id="prev-dalamAfter"></div></div></div></div><button onclick="updateFatData('${docId}')">Update</button><button onclick="showResume()" style="background:#6c757d; margin-left:10px;">Batal</button><div class="loading" id="submitLoading">Menyimpan data...</div>`;
+          
+          item.materials.forEach(materialString => {
+            let name = materialString, qty = "";
+            const match = materialString.match(/(.*) \((.*)\)$/);
+            if (match) { name = match[1]; qty = match[2]; }
+            
+            const container = document.getElementById('materialContainer');
+            const row = document.createElement("div");
+            row.className = "material-row";
+            row.innerHTML = `<select>${materialOptions}</select><input type="text" placeholder="Qty / Keterangan" value="${qty}" /><button onclick="removeMaterial(this)">x</button>`;
+            container.appendChild(row);
+            row.querySelector("select").value = name;
+          });
+          
+          fatPhotos = item.fatPhotos || {};
+          Object.keys(fatPhotos).forEach(key => {
+            if (fatPhotos[key]) {
+              document.getElementById('prev-' + key).innerHTML = `<img src="${fatPhotos[key]}" style="width:150px; height:100px; object-fit:cover;">`;
+            }
+          });
+          
+        } else {
+          document.getElementById('formPage').innerHTML = `<h2>Edit ${item.type} - ${item.orderId}</h2><label>Order ID</label><input type="text" id="orderId" value="${item.orderId}" /><label>Nama Teknisi</label><input type="text" id="namaTeknisi" value="${item.namaTeknisi}" /><div id="materialContainer"><label>Material</label></div><button type="button" onclick="addMaterial()">+ Tambah Material</button><hr style="margin: 20px 0;"><label>Foto Evidence Lama:</label><div id="existingPhotos" class="preview"></div><input type="file" id="foto" multiple onchange="previewFiles()" accept="image/*" /><div id="preview" class="preview"></div><p id="fotoCount"></p><button onclick="updateData('${docId}')">Update</button><button onclick="showResume()" style="background:#6c757d; margin-left:10px;">Batal</button><div class="loading" id="submitLoading">Menyimpan data...</div>`;
+          
+          item.materials.forEach(materialString => {
+            let name = materialString, qty = "";
+            const match = materialString.match(/(.*) \((.*)\)$/);
+            if (match) { name = match[1]; qty = match[2]; }
+            
+            const container = document.getElementById('materialContainer');
+            const row = document.createElement("div");
+            row.className = "material-row";
+            row.innerHTML = `<select>${materialOptions}</select><input type="text" placeholder="Qty / Keterangan" value="${qty}" /><button onclick="removeMaterial(this)">x</button>`;
+            container.appendChild(row);
+            row.querySelector("select").value = name;
+          });
+          
+          const existingPhotos = document.getElementById('existingPhotos');
+          if (item.fotoData && item.fotoData.length > 0) {
+            item.fotoData.forEach((f, index) => {
+              const container = document.createElement("div");
+              container.className = "preview-item";
+              const img = document.createElement("img");
+              img.src = f.src;
+              const input = document.createElement("input");
+              input.type = "text";
+              input.placeholder = "Keterangan";
+              input.value = f.caption || "";
+              input.id = `existing-caption-${index}`;
+              const deleteBtn = document.createElement("button");
+              deleteBtn.innerText = "Hapus";
+              deleteBtn.style.marginTop = "5px";
+              deleteBtn.style.background = "#dc3545";
+              deleteBtn.onclick = () => container.remove();
+              container.appendChild(img);
+              container.appendChild(input);
+              container.appendChild(deleteBtn);
+              existingPhotos.appendChild(container);
+            });
+          }
+          
+          selectedFiles = [];
+        }
+        
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function updateData(docId) {
+      const orderId = document.getElementById('orderId').value;
+      const namaTeknisi = document.getElementById('namaTeknisi').value;
+      const materials = getMaterials();
+      
+      if (!orderId || !namaTeknisi || materials.length === 0) {
+        alert("Lengkapi semua field sebelum update!");
+        return;
+      }
+      
+      const loading = document.getElementById('submitLoading');
+      loading.classList.add('active');
+      
+      const existingPhotos = [];
+      document.querySelectorAll('#existingPhotos .preview-item').forEach((item, index) => {
+        const img = item.querySelector('img');
+        const caption = item.querySelector('input').value;
+        existingPhotos.push({ src: img.src, caption });
+      });
+      
+      const newPhotos = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const reader = new FileReader();
+        await new Promise((resolve) => {
+          reader.onload = (e) => {
+            newPhotos.push({ src: e.target.result, caption: selectedFiles[i].caption });
+            resolve();
+          };
+          reader.readAsDataURL(selectedFiles[i].file);
+        });
+      }
+      
+      const allPhotos = [...existingPhotos, ...newPhotos];
+      
+      const entry = {
+        type: currentType,
+        orderId,
+        namaTeknisi,
+        materials,
+        fotoCount: allPhotos.length,
+        fotoData: allPhotos,
+        createdBy: currentUser.username
+      };
+      
+      try {
+        const response = await fetch(`${API_URL}/orders/${docId}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(entry)
+        });
+        
+        const data = await response.json();
+        loading.classList.remove('active');
+        
+        if (data.success) {
+          alert(`Data DW "${orderId}" berhasil diupdate!`);
+          await loadOrders();
+          showResume();
+        } else {
+          alert('Error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        loading.classList.remove('active');
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function updateFatData(docId) {
+      const orderId = document.getElementById('FATName').value;
+      const namaTeknisi = document.getElementById('namaTeknisi').value;
+      const requiredKeys = ['redamanInBefore','redamanInAfter','redamanOutBefore','redamanOutAfter','depanBefore','depanProses','depanAfter','dalamBefore','dalamProses','dalamAfter'];
+      
+      if (!orderId || !namaTeknisi) {
+        alert("FAT Name dan Nama Teknisi wajib diisi!");
+        return;
+      }
+      
+      for (let k of requiredKeys) {
+        if (!fatPhotos[k]) {
+          alert("Semua foto wajib diisi (10 foto)!");
+          return;
+        }
+      }
+      
+      const loading = document.getElementById('submitLoading');
+      loading.classList.add('active');
+      
+      const entry = {
+        orderId,
+        type: currentType,
+        namaTeknisi,
+        materials: getMaterials(),
+        fotoCount: 10,
+        fatPhotos,
+        createdBy: currentUser.username
+      };
+      
+      try {
+        const response = await fetch(`${API_URL}/orders/${docId}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(entry)
+        });
+        
+        const data = await response.json();
+        loading.classList.remove('active');
+        
+        if (data.success) {
+          alert(`Data FAT "${orderId}" berhasil diupdate!`);
+          await loadOrders();
+          showResume();
+        } else {
+          alert('Error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        loading.classList.remove('active');
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function deleteOrder(docId) {
+      if (!isAdmin()) {
+        alert('Akses ditolak! Hanya Admin yang dapat menghapus data.');
+        return;
+      }
+      
+      if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/orders/${docId}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('Data berhasil dihapus!');
+          await loadOrders();
+          showResume();
+        } else {
+          alert('Error: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      const modal = document.getElementById('modal');
+      if (event.target === modal) {
+        closeModal();
+      }
+    }
+    
+  </script>
+</body>
+</html>
