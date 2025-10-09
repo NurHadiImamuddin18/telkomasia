@@ -1,76 +1,136 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import mysql.connector
 from mysql.connector import Error
 import json
-import base64
-from datetime import datetime
 import os
+import time
 from functools import wraps
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            "https://telkomasia-production.up.railway.app",  # ← Production domain
+            "http://localhost:5000",  # ← Local testing
+            "http://127.0.0.1:5000"   # ← Local testing alternatif
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE"],
+        "allow_headers": ["Content-Type", "X-User-Role"]
+    }
+})
 
 load_dotenv()
-# MySQL Configuration
-DB_CONFIG = {
-    'host': os.getenv("MYSQLHOST"),
-    'database': os.getenv("MYSQLDATABASE"),
-    'user': os.getenv("MYSQLUSER"),
-    'password': os.getenv("MYSQLPASSWORD"),
-    'port': int(os.getenv("MYSQLPORT", 3306))
-}
 
-# PERBAIKAN: Decorator untuk cek role admin yang lebih robust
+# MySQL Configuration with MYSQL_URL support
+MYSQL_URL = os.getenv("MYSQL_URL")
+
+if MYSQL_URL:
+    print("📌 Using MYSQL_URL for connection")
+    try:
+        url = urlparse(MYSQL_URL)
+        DB_CONFIG = {
+            'host': url.hostname,
+            'database': url.path[1:] if url.path else '',
+            'user': url.username,
+            'password': url.password,
+            'port': url.port or 3306
+        }
+    except Exception as e:
+        print(f"❌ Error parsing MYSQL_URL: {e}")
+        print("Falling back to individual variables")
+        DB_CONFIG = {
+            'host': os.getenv("MYSQLHOST"),
+            'database': os.getenv("MYSQLDATABASE"),
+            'user': os.getenv("MYSQLUSER"),
+            'password': os.getenv("MYSQLPASSWORD"),
+            'port': int(os.getenv("MYSQLPORT", 3306))
+        }
+else:
+    print("📌 Using individual MySQL variables")
+    DB_CONFIG = {
+        'host': os.getenv("MYSQLHOST"),
+        'database': os.getenv("MYSQLDATABASE"),
+        'user': os.getenv("MYSQLUSER"),
+        'password': os.getenv("MYSQLPASSWORD"),
+        'port': int(os.getenv("MYSQLPORT", 3306))
+    }
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Cek dari berbagai sumber
         user_role = None
-        
-        # 1. Cek dari header
         user_role = request.headers.get('X-User-Role')
         
-        # 2. Jika tidak ada di header, cek dari JSON body
         if not user_role and request.is_json:
             data = request.json
             user_role = data.get('userRole') or data.get('role')
         
-        # 3. Jika tidak ada, cek dari form data
         if not user_role:
             user_role = request.form.get('userRole') or request.form.get('role')
         
-        # Validasi role
         if user_role != 'admin':
             return jsonify({
                 'success': False, 
                 'message': 'Unauthorized. Admin access required.',
-                'debug_info': f'Received role: {user_role}'  # Untuk debugging
+                'debug_info': f'Received role: {user_role}'
             }), 403
         
         return f(*args, **kwargs)
     return decorated_function
 
 def get_db():
-    """Connect to the MySQL database"""
-    try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        return conn
-    except Error as e:
-        print(f"Error connecting to MySQL: {e}")
-        return None
+    """Connect to MySQL database with retry logic"""
+    max_retries = 5
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"🔄 Attempting database connection (attempt {attempt + 1}/{max_retries})...")
+            print(f"   Host: {DB_CONFIG.get('host')}")
+            print(f"   Port: {DB_CONFIG.get('port')}")
+            print(f"   Database: {DB_CONFIG.get('database')}")
+            print(f"   User: {DB_CONFIG.get('user')}")
+            
+            conn = mysql.connector.connect(**DB_CONFIG)
+            print("✅ Connected to database successfully!")
+            return conn
+        except Error as e:
+            print(f"❌ Connection attempt {attempt + 1} failed")
+            print(f"   Error code: {e.errno if hasattr(e, 'errno') else 'N/A'}")
+            print(f"   Error message: {e.msg if hasattr(e, 'msg') else str(e)}")
+            
+            if attempt < max_retries - 1:
+                print(f"⏳ Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                print("❌ Max retries reached. Could not connect to database.")
+                return None
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
+            return None
+    
+    return None
 
 def init_db():
     """Initialize database with required tables"""
+    print("=" * 60)
+    print("🔧 INITIALIZING DATABASE")
+    print("=" * 60)
+    
     conn = get_db()
     if not conn:
-        print("Failed to connect to database")
-        return
+        print("❌ Failed to connect to database. Skipping initialization.")
+        print("⚠️  App will continue but database features won't work!")
+        return False
     
     cursor = conn.cursor()
     
     try:
+        print("📋 Creating tables...")
+        
         # Table for users
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -81,8 +141,9 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        print("   ✅ Table 'users' created/verified")
         
-        # Table for orders (DW and FAT)
+        # Table for orders
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS orders (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -95,6 +156,7 @@ def init_db():
                 created_by VARCHAR(255)
             )
         ''')
+        print("   ✅ Table 'orders' created/verified")
         
         # Table for photos (DW photos)
         cursor.execute('''
@@ -107,6 +169,7 @@ def init_db():
                 FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
             )
         ''')
+        print("   ✅ Table 'photos' created/verified")
         
         # Table for FAT photos
         cursor.execute('''
@@ -118,6 +181,9 @@ def init_db():
                 FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
             )
         ''')
+        print("   ✅ Table 'fat_photos' created/verified")
+        
+        print("\n👤 Creating default users...")
         
         # Insert default admin user if not exists
         cursor.execute('SELECT * FROM users WHERE username = %s', ('admin',))
@@ -126,6 +192,9 @@ def init_db():
                 INSERT INTO users (username, password, role) 
                 VALUES (%s, %s, %s)
             ''', ('admin', 'admin123', 'admin'))
+            print("   ✅ Admin user created: admin / admin123")
+        else:
+            print("   ℹ️  Admin user already exists")
         
         # Insert default user if not exists
         cursor.execute('SELECT * FROM users WHERE username = %s', ('teknisi',))
@@ -134,22 +203,61 @@ def init_db():
                 INSERT INTO users (username, password, role) 
                 VALUES (%s, %s, %s)
             ''', ('teknisi', 'teknisi123', 'user'))
+            print("   ✅ Teknisi user created: teknisi / teknisi123")
+        else:
+            print("   ℹ️  Teknisi user already exists")
         
         conn.commit()
-        print("Database initialized successfully")
-        print("Default users created:")
-        print("  - admin / admin123 (Administrator)")
-        print("  - teknisi / teknisi123 (User)")
+        
+        print("\n" + "=" * 60)
+        print("✅ DATABASE INITIALIZATION SUCCESSFUL!")
+        print("=" * 60)
+        print("📌 Default credentials:")
+        print("   👔 Admin: admin / admin123")
+        print("   👷 User: teknisi / teknisi123")
+        print("=" * 60)
+        
+        return True
+        
     except Error as e:
-        print(f"Error initializing database: {e}")
+        print(f"\n❌ Error initializing database:")
+        print(f"   Error code: {e.errno if hasattr(e, 'errno') else 'N/A'}")
+        print(f"   Error message: {e.msg if hasattr(e, 'msg') else str(e)}")
+        return False
+    except Exception as e:
+        print(f"\n❌ Unexpected error: {e}")
+        return False
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
+            print("🔌 Database connection closed")
 
 @app.route('/')
 def index():
     """Serve the main HTML page"""
     return render_template('prototype_change_dw_fat_v2.1.html')
+
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    conn = get_db()
+    if conn:
+        conn.close()
+        return jsonify({
+            'status': 'healthy', 
+            'database': 'connected',
+            'config': {
+                'host': DB_CONFIG.get('host'),
+                'port': DB_CONFIG.get('port'),
+                'database': DB_CONFIG.get('database')
+            }
+        }), 200
+    return jsonify({
+        'status': 'unhealthy', 
+        'database': 'disconnected'
+    }), 500
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -204,7 +312,6 @@ def add_user():
     password = data.get('password')
     role = data.get('role', 'user')
     
-    # Validasi input
     if not username or not password:
         return jsonify({'success': False, 'message': 'Username and password are required'}), 400
     
@@ -244,7 +351,6 @@ def delete_user(user_id):
     
     cursor = conn.cursor(dictionary=True)
     
-    # Check if user is admin
     cursor.execute('SELECT role FROM users WHERE id = %s', (user_id,))
     user = cursor.fetchone()
     
@@ -272,7 +378,6 @@ def create_order():
     foto_count = data.get('fotoCount', 0)
     created_by = data.get('createdBy')
     
-    # Validasi input
     if not order_id or not order_type or not nama_teknisi:
         return jsonify({'success': False, 'message': 'Missing required fields'}), 400
     
@@ -290,7 +395,6 @@ def create_order():
         
         new_order_id = cursor.lastrowid
         
-        # Save photos for DW
         if order_type == 'DW' and 'fotoData' in data:
             for idx, foto in enumerate(data['fotoData']):
                 cursor.execute('''
@@ -298,7 +402,6 @@ def create_order():
                     VALUES (%s, %s, %s, %s)
                 ''', (new_order_id, foto['src'], foto.get('caption', ''), idx))
         
-        # Save photos for FAT
         if order_type == 'FAT' and 'fatPhotos' in data:
             for key, image_data in data['fatPhotos'].items():
                 cursor.execute('''
@@ -332,14 +435,11 @@ def get_orders():
     for order in orders:
         order_dict = dict(order)
         order_dict['materials'] = json.loads(order_dict['materials'])
-        
-        # Convert snake_case to camelCase for frontend compatibility
         order_dict['orderId'] = order_dict['order_id']
         order_dict['namaTeknisi'] = order_dict['nama_teknisi']
         order_dict['fotoCount'] = order_dict['foto_count']
         order_dict['createdBy'] = order_dict.get('created_by')
         order_dict['createdAt'] = order_dict.get('created_at')
-        
         result.append(order_dict)
     
     cursor.close()
@@ -365,22 +465,18 @@ def get_order_detail(order_id):
     
     order_dict = dict(order)
     order_dict['materials'] = json.loads(order_dict['materials'])
-    
-    # Convert field names
     order_dict['orderId'] = order_dict['order_id']
     order_dict['namaTeknisi'] = order_dict['nama_teknisi']
     order_dict['fotoCount'] = order_dict['foto_count']
     order_dict['createdBy'] = order_dict.get('created_by')
     order_dict['createdAt'] = order_dict.get('created_at')
     
-    # Get photos for DW orders
     if order_dict['type'] == 'DW':
         cursor.execute('SELECT image_data, caption, photo_index FROM photos WHERE order_id = %s ORDER BY photo_index', 
                       (order_id,))
         photos = cursor.fetchall()
         order_dict['fotoData'] = [{'src': p['image_data'], 'caption': p['caption']} for p in photos]
     
-    # Get photos for FAT orders
     if order_dict['type'] == 'FAT':
         cursor.execute('SELECT photo_key, image_data FROM fat_photos WHERE order_id = %s', 
                       (order_id,))
@@ -413,22 +509,16 @@ def update_order(order_id):
             WHERE id = %s
         ''', (materials, foto_count, order_id))
         
-        # Update DW photos if provided
         if 'fotoData' in data:
-            # Delete old photos
             cursor.execute('DELETE FROM photos WHERE order_id = %s', (order_id,))
-            # Insert new photos
             for idx, foto in enumerate(data['fotoData']):
                 cursor.execute('''
                     INSERT INTO photos (order_id, image_data, caption, photo_index)
                     VALUES (%s, %s, %s, %s)
                 ''', (order_id, foto['src'], foto.get('caption', ''), idx))
         
-        # Update FAT photos if provided
         if 'fatPhotos' in data:
-            # Delete old photos
             cursor.execute('DELETE FROM fat_photos WHERE order_id = %s', (order_id,))
-            # Insert new photos
             for key, image_data in data['fatPhotos'].items():
                 cursor.execute('''
                     INSERT INTO fat_photos (order_id, photo_key, image_data)
@@ -469,22 +559,21 @@ def delete_order(order_id):
         conn.close()
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# Initialize database when module is loaded (works in production!)
+print("\n" + "🚀" * 30)
+print("STARTING FLASK APPLICATION")
+print("🚀" * 30 + "\n")
+
+init_db()
+
 if __name__ == '__main__':
-    # Create templates folder if it doesn't exist
     if not os.path.exists('templates'):
         os.makedirs('templates')
     
-    # Initialize database
-    print("="*50)
-    print("Initializing MySQL Database...")
-    print("="*50)
-    init_db()
+    print("\n" + "=" * 60)
+    print("🌐 Starting Development Server...")
+    print("=" * 60)
+    print("📍 Server running at: http://localhost:5000")
+    print("=" * 60 + "\n")
     
-    print("\n" + "="*50)
-    print("Starting Flask Server...")
-    print("="*50)
-    print("Server running at: http://localhost:5000")
-    print("="*50)
-    
-    # Run the app
     app.run(debug=True, host='0.0.0.0', port=5000)
