@@ -688,23 +688,25 @@ def download_pdf(order_id):
 
     # Evidence section
     if order_obj['evidenceFiles']:
-        story.append(Paragraph("FOTO EVIDENCE", heading_style))
-        for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
-            story.append(Paragraph(f"{idx}. {file_info['original_name']}", styles["Normal"]))
-            img_b64 = file_info.get("image_data")
-            if img_b64:
-                try:
-                    if "," in img_b64:
-                        img_b64 = img_b64.split(",")[1]
-                    img_bytes = base64.b64decode(img_b64)
-                    img_reader = ImageReader(BytesIO(img_bytes))
-                    img = Image(img_reader, width=10*cm, height=7*cm)
-                    img.hAlign = 'CENTER'
-                    story.append(Spacer(1, 5))
-                    story.append(img)
-                    story.append(Spacer(1, 15))
-                except Exception as e:
-                    print(f"Gagal load gambar: {e}")
+     story.append(Paragraph("FOTO EVIDENCE", heading_style))
+    for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
+        # hanya tampilkan nama file tanpa waktu upload
+        story.append(Paragraph(f"{idx}. {file_info['original_name']}", styles["Normal"]))
+
+        img_b64 = file_info.get("image_data")
+        if img_b64:
+            try:
+                if "," in img_b64:
+                    img_b64 = img_b64.split(",")[1]
+                img_bytes = base64.b64decode(img_b64)
+                img_reader = ImageReader(BytesIO(img_bytes))
+                img = Image(img_reader, width=10*cm, height=7*cm)
+                img.hAlign = 'CENTER'
+                story.append(Spacer(1, 5))
+                story.append(img)
+                story.append(Spacer(1, 15))
+            except Exception as e:
+                print(f"Gagal load gambar: {e}")
 
     # Footer
     story.append(Spacer(1, 30))
