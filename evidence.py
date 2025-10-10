@@ -1,8 +1,13 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 import mysql.connector
 from mysql.connector import Error
 import json
+import base64
 import os
 import time
 from functools import wraps
@@ -15,6 +20,7 @@ CORS(app, resources={
         "origins": [
             "https://telkomasia-production.up.railway.app",  # ← Production domain
             "http://localhost:5000",  # ← Local testing
+            "https://wzaojy07.up.railway.app",
             "http://127.0.0.1:5000"   # ← Local testing alternatif
         ],
         "methods": ["GET", "POST", "PUT", "DELETE"],
@@ -558,6 +564,115 @@ def delete_order(order_id):
         cursor.close()
         conn.close()
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/download-pdf/<int:order_id>', methods=['GET'])
+def download_pdf(order_id):
+    """Generate and download PDF with embedded photos"""
+    conn = get_db()
+    if not conn:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT * FROM orders WHERE id = %s', (order_id,))
+    order = cursor.fetchone()
+
+    if not order:
+        cursor.close()
+        conn.close()
+        return jsonify({'success': False, 'message': 'Order not found'}), 404
+
+    order_id_str = order['order_id']
+    nama_teknisi = order['nama_teknisi']
+    tipe = order['type']
+    materials = json.loads(order['materials'])
+    foto_count = order['foto_count']
+    created_by = order.get('created_by', '-')
+    created_at = str(order.get('created_at', '-'))
+
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    # Header
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(200, height - 80, f"Laporan {tipe}")
+
+    p.setFont("Helvetica", 12)
+    y = height - 120
+    p.drawString(50, y, f"Order ID      : {order_id_str}")
+    y -= 20
+    p.drawString(50, y, f"Nama Teknisi  : {nama_teknisi}")
+    y -= 20
+    p.drawString(50, y, f"Tipe          : {tipe}")
+    y -= 20
+    p.drawString(50, y, f"Jumlah Foto   : {foto_count}")
+    y -= 20
+    p.drawString(50, y, f"Created By    : {created_by}")
+    y -= 20
+    p.drawString(50, y, f"Tanggal       : {created_at}")
+
+    # Materials
+    y -= 40
+    p.setFont("Helvetica-Bold", 13)
+    p.drawString(50, y, "Daftar Material:")
+    p.setFont("Helvetica", 12)
+    y -= 20
+    for mat in materials:
+        if y < 100:
+            p.showPage()
+            y = height - 80
+            p.setFont("Helvetica", 12)
+        p.drawString(70, y, f"- {mat}")
+        y -= 20
+
+    # Foto Evidence
+    y -= 30
+    p.setFont("Helvetica-Bold", 13)
+    p.drawString(50, y, "Foto Evidence:")
+    y -= 30
+
+    if tipe == 'DW':
+        cursor.execute('SELECT image_data, caption FROM photos WHERE order_id = %s ORDER BY photo_index', (order_id,))
+        fotos = cursor.fetchall()
+    else:
+        cursor.execute('SELECT photo_key AS caption, image_data FROM fat_photos WHERE order_id = %s', (order_id,))
+        fotos = cursor.fetchall()
+
+    for f in fotos:
+        img_b64 = f.get('image_data')
+        caption = f.get('caption', '')
+        if not img_b64:
+            continue
+
+        # Decode base64 → bytes
+        try:
+            if "," in img_b64:
+                img_b64 = img_b64.split(",")[1]
+            img_bytes = base64.b64decode(img_b64)
+            img_reader = ImageReader(BytesIO(img_bytes))
+        except Exception as e:
+            print(f"⚠️ Gagal decode gambar: {e}")
+            continue
+
+        # Buat space baru di halaman kalau hampir habis
+        img_height = 180
+        if y - img_height < 50:
+            p.showPage()
+            y = height - 100
+            p.setFont("Helvetica", 12)
+
+        p.drawImage(img_reader, 60, y - img_height, width=200, height=img_height, preserveAspectRatio=True, mask='auto')
+        p.drawString(60, y - img_height - 15, caption[:80])
+        y -= img_height + 40
+
+    cursor.close()
+    conn.close()
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    filename = f"{tipe}_{order_id_str}.pdf"
+    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
 # Initialize database when module is loaded (works in production!)
 print("\n" + "🚀" * 30)

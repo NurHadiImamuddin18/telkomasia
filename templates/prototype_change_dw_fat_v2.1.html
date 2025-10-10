@@ -450,7 +450,12 @@
       let rows = filtered.map((item) => {
         const editBtn = isAdmin() ? `<button onclick="editOrder('${item.id}')">Edit</button>` : '';
         const deleteBtn = isAdmin() ? `<button onclick="deleteOrder('${item.id}')" style="background:#dc3545;">Hapus</button>` : '';
-        return `<tr><td>${item.orderId}</td><td>${item.namaTeknisi}</td><td>${item.type}</td><td>${item.materials.join(", ")}</td><td>${item.fotoCount}</td><td class='actions'><button onclick="viewDetail('${item.id}')">View</button>${editBtn}${deleteBtn}</td></tr>`;
+        return `<tr><td>${item.orderId}</td><td>${item.namaTeknisi}</td><td>${item.type}</td><td>${item.materials.join(", ")}</td><td>${item.fotoCount}</td><td class='actions'>
+        <button onclick="viewDetail('${item.id}')">View</button>
+        <button onclick="window.location='${API_URL}/download-pdf/${item.id}'">Download PDF</button>
+  ${editBtn}${deleteBtn}
+</td>
+</tr>`;
       }).join("");
       
       if (!rows) rows = "<tr><td colspan='6'>Data tidak ditemukan</td></tr>";
