@@ -693,49 +693,49 @@ def download_pdf(order_id):
     # Header tabel
     evidence_data = [['No.', 'Foto Evidence', 'Keterangan Foto']]
 
-    for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
-        img_b64 = file_info.get("image_data")
-        caption = file_info.get("original_name", "-")  # caption foto (bisa diubah sesuai kolom DB)
-        foto_elemen = []
+        for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
+            img_b64 = file_info.get("image_data")
+            caption = file_info.get("original_name", "-")  # caption foto (bisa diubah sesuai kolom DB)
+            foto_elemen = []
+    
+            # Tambahkan gambar
+            if img_b64:
+                try:
+                    if "," in img_b64:
+                        img_b64 = img_b64.split(",")[1]
+                    img_bytes = base64.b64decode(img_b64)
+                    img_reader = ImageReader(BytesIO(img_bytes))
+                    img = Image(img_reader, width=6.5*cm, height=4.5*cm)  # ukuran pas 1 kolom
+                    img.hAlign = 'CENTER'
+                    foto_elemen.append(img)
+                except Exception as e:
+                    print(f"Gagal load gambar: {e}")
+                    foto_elemen.append(Paragraph("(Gagal menampilkan gambar)", styles["Normal"]))
+            else:
+                foto_elemen.append(Paragraph("(Tidak ada gambar)", styles["Normal"]))
+    
+            # Tambahkan baris ke tabel
+            evidence_data.append([
+                str(idx),
+                foto_elemen,
+                Paragraph(caption, styles["Normal"])
+            ])
 
-        # Tambahkan gambar
-        if img_b64:
-            try:
-                if "," in img_b64:
-                    img_b64 = img_b64.split(",")[1]
-                img_bytes = base64.b64decode(img_b64)
-                img_reader = ImageReader(BytesIO(img_bytes))
-                img = Image(img_reader, width=6.5*cm, height=4.5*cm)  # ukuran pas 1 kolom
-                img.hAlign = 'CENTER'
-                foto_elemen.append(img)
-            except Exception as e:
-                print(f"Gagal load gambar: {e}")
-                foto_elemen.append(Paragraph("(Gagal menampilkan gambar)", styles["Normal"]))
-        else:
-            foto_elemen.append(Paragraph("(Tidak ada gambar)", styles["Normal"]))
-
-        # Tambahkan baris ke tabel
-        evidence_data.append([
-            str(idx),
-            foto_elemen,
-            Paragraph(caption, styles["Normal"])
-        ])
-
-    # Buat tabel 3 kolom
-    evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
-    evidence_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-        ('ALIGN', (1, 1), (1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6)
-    ]))
-    story.append(evidence_table)
+            # Buat tabel 3 kolom
+            evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
+            evidence_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                ('ALIGN', (1, 1), (1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6)
+            ]))
+            story.append(evidence_table)
 
     # Footer
     story.append(Spacer(1, 30))
