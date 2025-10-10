@@ -591,16 +591,15 @@ def download_pdf(order_id):
         "namaTeknisi": order["nama_teknisi"],
         "type": order["type"],
         "fotoCount": order["foto_count"],
-        "timestamp": str(order["created_at"]),
         "materials": json.loads(order["materials"]) if order["materials"] else [],
         "evidenceFiles": []
     }
 
     # Ambil foto evidence
     if order["type"] == "DW":
-        cursor.execute("SELECT caption AS original_name, image_data, upload_time FROM photos WHERE order_id=%s ORDER BY photo_index", (order_id,))
+        cursor.execute("SELECT caption AS original_name, image_data FROM photos WHERE order_id=%s ORDER BY photo_index", (order_id,))
     else:
-        cursor.execute("SELECT photo_key AS original_name, image_data, upload_time FROM fat_photos WHERE order_id=%s", (order_id,))
+        cursor.execute("SELECT photo_key AS original_name, image_data FROM fat_photos WHERE order_id=%s", (order_id,))
     evidence_files = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -608,7 +607,6 @@ def download_pdf(order_id):
     for f in evidence_files:
         order_obj["evidenceFiles"].append({
             "original_name": f.get("original_name", ""),
-            "upload_time": str(f.get("upload_time")),
             "image_data": f.get("image_data")
         })
 
@@ -654,7 +652,6 @@ def download_pdf(order_id):
         ['Order ID', order_obj['orderId']],
         ['Nama Teknisi', order_obj['namaTeknisi']],
         ['Tipe Pekerjaan', order_obj['type']],
-        ['Tanggal', datetime.fromisoformat(order_obj['timestamp']).strftime('%d/%m/%Y %H:%M:%S')],
         ['Jumlah Foto Evidence', str(order_obj['fotoCount'])]
     ]
     basic_table = Table(basic_data, colWidths=[4*cm, 10*cm])
@@ -693,13 +690,7 @@ def download_pdf(order_id):
     if order_obj['evidenceFiles']:
         story.append(Paragraph("FOTO EVIDENCE", heading_style))
         for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
-            upload_time = "-"
-            try:
-                upload_time = datetime.fromisoformat(file_info['upload_time']).strftime('%d/%m/%Y %H:%M:%S')
-            except:
-                pass
-
-            story.append(Paragraph(f"{idx}. {file_info['original_name']} ({upload_time})", styles["Normal"]))
+            story.append(Paragraph(f"{idx}. {file_info['original_name']}", styles["Normal"]))
             img_b64 = file_info.get("image_data")
             if img_b64:
                 try:
