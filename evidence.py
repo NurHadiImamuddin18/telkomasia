@@ -732,8 +732,8 @@ def download_pdf(order_id):
             ])
     
         # Buat tabel setelah semua baris terkumpul
-        evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
-        evidence_table.setStyle(TableStyle([
+    evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
+    evidence_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
@@ -746,7 +746,7 @@ def download_pdf(order_id):
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
             ('TOPPADDING', (0, 0), (-1, -1), 6)
         ]))
-        story.append(evidence_table)
+    story.append(evidence_table)
 
     # Footer
     story.append(Spacer(1, 30))
