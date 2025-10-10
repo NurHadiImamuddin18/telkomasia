@@ -571,6 +571,31 @@ def delete_order(order_id):
         conn.close()
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/test-image/<int:photo_id>')
+def test_image(photo_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute('SELECT image_data FROM photos WHERE id = %s', (photo_id,))
+    photo = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    if not photo:
+        return "Photo not found", 404
+    
+    img_b64 = photo['image_data']
+    
+    # Clean & decode
+    if "," in img_b64:
+        img_b64 = img_b64.split(",")[1]
+    
+    img_bytes = base64.b64decode(img_b64)
+    
+    return send_file(
+        BytesIO(img_bytes),
+        mimetype='image/jpeg'
+    )
+
 @app.route('/api/download-pdf/<int:order_id>', methods=['GET'])
 def download_pdf(order_id):
     conn = get_db()
@@ -686,56 +711,70 @@ def download_pdf(order_id):
         story.append(materials_table)
         story.append(Spacer(1, 20))
 
-    # Evidence section
+    # Evidence section - FIXED INDENTATION!
     if order_obj['evidenceFiles']:
         story.append(Paragraph("FOTO EVIDENCE", heading_style))
-    
+        
         # Header tabel hanya sekali di awal
         evidence_data = [['No.', 'Foto Evidence', 'Keterangan Foto']]
-    
-    for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
+        
+        # Loop untuk setiap foto - HARUS DI DALAM if block!
+        for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
             img_data = file_info.get("image_data")
             caption = file_info.get("original_name", "-")
-    
+            
             foto_elemen = None
-    
+            
             if img_data:
                 try:
+                    print(f"📸 Processing image {idx}")
+                    
                     # Kalau image_data berisi base64 lengkap dengan prefix
                     if isinstance(img_data, str):
-                        # Hapus prefix "data:image/jpeg;base64,"
-                        if img_data.startswith("data:image"):
-                            img_data = img_data.split(",")[1]
-
+                        print(f"   Type: string, Length: {len(img_data)}")
+                        print(f"   First 50 chars: {img_data[:50]}")
+                        
+                        # Hapus prefix "data:image/xxx;base64,"
+                        if "," in img_data:
+                            img_data = img_data.split(",", 1)[1]
+                            print(f"   After split: {len(img_data)} chars")
+                        
                         # Decode base64
                         img_bytes = base64.b64decode(img_data)
-
+                        print(f"   ✅ Decoded to {len(img_bytes)} bytes")
+                    
                     # Jika bytes (BLOB)
                     elif isinstance(img_data, (bytes, bytearray)):
+                        print(f"   Type: bytes, Length: {len(img_data)}")
                         img_bytes = img_data
                     else:
-                        raise ValueError("Format data gambar tidak dikenali")
-
+                        raise ValueError(f"Unknown image data type: {type(img_data)}")
+                    
+                    # Create image
                     img_reader = ImageReader(BytesIO(img_bytes))
                     foto_elemen = Image(img_reader, width=6.5*cm, height=4.5*cm)
                     foto_elemen.hAlign = 'CENTER'
-
+                    print(f"   ✅ Image created successfully")
+                    
                 except Exception as e:
-                    print(f"Gagal load gambar index {idx}: {e}")
+                    print(f"   ❌ Error: {e}")
+                    import traceback
+                    traceback.print_exc()
                     foto_elemen = Paragraph("(Gagal menampilkan gambar)", styles["Normal"])
-                else:
-                    foto_elemen = Paragraph("(Tidak ada gambar)", styles["Normal"])
-    
+            else:
+                print(f"⚠️  No image data for index {idx}")
+                foto_elemen = Paragraph("(Tidak ada gambar)", styles["Normal"])
+            
             # Tambahkan baris ke tabel
             evidence_data.append([
                 str(idx),
                 foto_elemen,
                 Paragraph(caption, styles["Normal"])
             ])
-    
-        # Buat tabel setelah semua baris terkumpul
-    evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
-    evidence_table.setStyle(TableStyle([
+        
+        # Buat tabel setelah semua baris terkumpul - MASIH DI DALAM if block!
+        evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
+        evidence_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
@@ -745,10 +784,10 @@ def download_pdf(order_id):
             ('ALIGN', (2, 1), (2, -1), 'LEFT'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6)
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8)
         ]))
-    story.append(evidence_table)
+        story.append(evidence_table)
 
     # Footer
     story.append(Spacer(1, 30))
@@ -756,10 +795,18 @@ def download_pdf(order_id):
     story.append(Paragraph(footer_text, styles['Normal']))
 
     # Build PDF
-    doc.build(story)
-    buffer.seek(0)
+    try:
+        doc.build(story)
+        print("✅ PDF built successfully")
+    except Exception as e:
+        print(f"❌ Error building PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'PDF generation failed: {str(e)}'}), 500
     
+    buffer.seek(0)
     filename = f"{order_obj['type']}_{order_obj['orderId']}.pdf"
+    
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
     
 # Initialize database when module is loaded (works in production!)
