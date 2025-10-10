@@ -701,28 +701,30 @@ def download_pdf(order_id):
     
             if img_data:
                 try:
-                    # --- Deteksi otomatis format gambar ---
-                    # Jika string base64
+                    # Kalau image_data berisi base64 lengkap dengan prefix
                     if isinstance(img_data, str):
-                        if "," in img_data:
+                        # Hapus prefix "data:image/jpeg;base64,"
+                        if img_data.startswith("data:image"):
                             img_data = img_data.split(",")[1]
+
+                        # Decode base64
                         img_bytes = base64.b64decode(img_data)
-                    # Jika bytes (BLOB dari MySQL)
+
+                    # Jika bytes (BLOB)
                     elif isinstance(img_data, (bytes, bytearray)):
                         img_bytes = img_data
                     else:
                         raise ValueError("Format data gambar tidak dikenali")
-    
-                    # Buat gambar untuk PDF
+
                     img_reader = ImageReader(BytesIO(img_bytes))
                     foto_elemen = Image(img_reader, width=6.5*cm, height=4.5*cm)
                     foto_elemen.hAlign = 'CENTER'
-    
+
                 except Exception as e:
                     print(f"Gagal load gambar index {idx}: {e}")
                     foto_elemen = Paragraph("(Gagal menampilkan gambar)", styles["Normal"])
-            else:
-                foto_elemen = Paragraph("(Tidak ada gambar)", styles["Normal"])
+                else:
+                    foto_elemen = Paragraph("(Tidak ada gambar)", styles["Normal"])
     
             # Tambahkan baris ke tabel
             evidence_data.append([
