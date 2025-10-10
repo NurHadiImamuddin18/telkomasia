@@ -688,12 +688,12 @@ def download_pdf(order_id):
 
     # Evidence section
     if order_obj['evidenceFiles']:
-    story.append(Paragraph("FOTO EVIDENCE", heading_style))
+        story.append(Paragraph("FOTO EVIDENCE", heading_style))
 
     # Header tabel
     evidence_data = [['No.', 'Foto Evidence', 'Keterangan Foto']]
 
-        for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
+    for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
             img_b64 = file_info.get("image_data")
             caption = file_info.get("original_name", "-")  # caption foto (bisa diubah sesuai kolom DB)
             foto_elemen = []
