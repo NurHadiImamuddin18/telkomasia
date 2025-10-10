@@ -4,6 +4,12 @@ from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, Image
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.units import cm
+from datetime import datetime
 import mysql.connector
 from mysql.connector import Error
 import json
@@ -567,7 +573,6 @@ def delete_order(order_id):
 
 @app.route('/api/download-pdf/<int:order_id>', methods=['GET'])
 def download_pdf(order_id):
-    """Generate and download PDF with embedded photos"""
     conn = get_db()
     if not conn:
         return jsonify({'success': False, 'message': 'Database connection failed'}), 500
@@ -581,99 +586,145 @@ def download_pdf(order_id):
         conn.close()
         return jsonify({'success': False, 'message': 'Order not found'}), 404
 
-    order_id_str = order['order_id']
-    nama_teknisi = order['nama_teknisi']
-    tipe = order['type']
-    materials = json.loads(order['materials'])
-    foto_count = order['foto_count']
-    created_by = order.get('created_by', '-')
-    created_at = str(order.get('created_at', '-'))
+    order_obj = {
+        "orderId": order["order_id"],
+        "namaTeknisi": order["nama_teknisi"],
+        "type": order["type"],
+        "fotoCount": order["foto_count"],
+        "timestamp": str(order["created_at"]),
+        "materials": json.loads(order["materials"]) if order["materials"] else [],
+        "evidenceFiles": []
+    }
 
-    buffer = BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-
-    # Header
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(200, height - 80, f"Laporan {tipe}")
-
-    p.setFont("Helvetica", 12)
-    y = height - 120
-    p.drawString(50, y, f"Order ID      : {order_id_str}")
-    y -= 20
-    p.drawString(50, y, f"Nama Teknisi  : {nama_teknisi}")
-    y -= 20
-    p.drawString(50, y, f"Tipe          : {tipe}")
-    y -= 20
-    p.drawString(50, y, f"Jumlah Foto   : {foto_count}")
-    y -= 20
-    p.drawString(50, y, f"Created By    : {created_by}")
-    y -= 20
-    p.drawString(50, y, f"Tanggal       : {created_at}")
-
-    # Materials
-    y -= 40
-    p.setFont("Helvetica-Bold", 13)
-    p.drawString(50, y, "Daftar Material:")
-    p.setFont("Helvetica", 12)
-    y -= 20
-    for mat in materials:
-        if y < 100:
-            p.showPage()
-            y = height - 80
-            p.setFont("Helvetica", 12)
-        p.drawString(70, y, f"- {mat}")
-        y -= 20
-
-    # Foto Evidence
-    y -= 30
-    p.setFont("Helvetica-Bold", 13)
-    p.drawString(50, y, "Foto Evidence:")
-    y -= 30
-
-    if tipe == 'DW':
-        cursor.execute('SELECT image_data, caption FROM photos WHERE order_id = %s ORDER BY photo_index', (order_id,))
-        fotos = cursor.fetchall()
+    # Ambil foto evidence
+    if order["type"] == "DW":
+        cursor.execute("SELECT caption AS original_name, image_data, upload_time FROM photos WHERE order_id=%s ORDER BY photo_index", (order_id,))
     else:
-        cursor.execute('SELECT photo_key AS caption, image_data FROM fat_photos WHERE order_id = %s', (order_id,))
-        fotos = cursor.fetchall()
-
-    for f in fotos:
-        img_b64 = f.get('image_data')
-        caption = f.get('caption', '')
-        if not img_b64:
-            continue
-
-        # Decode base64 → bytes
-        try:
-            if "," in img_b64:
-                img_b64 = img_b64.split(",")[1]
-            img_bytes = base64.b64decode(img_b64)
-            img_reader = ImageReader(BytesIO(img_bytes))
-        except Exception as e:
-            print(f"⚠️ Gagal decode gambar: {e}")
-            continue
-
-        # Buat space baru di halaman kalau hampir habis
-        img_height = 180
-        if y - img_height < 50:
-            p.showPage()
-            y = height - 100
-            p.setFont("Helvetica", 12)
-
-        p.drawImage(img_reader, 60, y - img_height, width=200, height=img_height, preserveAspectRatio=True, mask='auto')
-        p.drawString(60, y - img_height - 15, caption[:80])
-        y -= img_height + 40
-
+        cursor.execute("SELECT photo_key AS original_name, image_data, upload_time FROM fat_photos WHERE order_id=%s", (order_id,))
+    evidence_files = cursor.fetchall()
     cursor.close()
     conn.close()
 
-    p.showPage()
-    p.save()
-    buffer.seek(0)
-    filename = f"{tipe}_{order_id_str}.pdf"
-    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+    for f in evidence_files:
+        order_obj["evidenceFiles"].append({
+            "original_name": f.get("original_name", ""),
+            "upload_time": str(f.get("upload_time")),
+            "image_data": f.get("image_data")
+        })
 
+    # --- Generate PDF ---
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=2*cm,
+        leftMargin=2*cm,
+        topMargin=2*cm,
+        bottomMargin=2*cm
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#1a3d7c'),
+        alignment=TA_CENTER,
+        spaceAfter=30
+    )
+
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#1a3d7c'),
+        spaceBefore=20,
+        spaceAfter=10
+    )
+
+    story = []
+
+    # Title
+    title = Paragraph(f"LAPORAN {order_obj['type']} - {order_obj['orderId']}", title_style)
+    story.append(title)
+
+    # Basic info
+    story.append(Paragraph("INFORMASI DASAR", heading_style))
+    basic_data = [
+        ['Order ID', order_obj['orderId']],
+        ['Nama Teknisi', order_obj['namaTeknisi']],
+        ['Tipe Pekerjaan', order_obj['type']],
+        ['Tanggal', datetime.fromisoformat(order_obj['timestamp']).strftime('%d/%m/%Y %H:%M:%S')],
+        ['Jumlah Foto Evidence', str(order_obj['fotoCount'])]
+    ]
+    basic_table = Table(basic_data, colWidths=[4*cm, 10*cm])
+    basic_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f5f7fa')),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP')
+    ]))
+    story.append(basic_table)
+    story.append(Spacer(1, 20))
+
+    # Materials
+    if order_obj['materials']:
+        story.append(Paragraph("MATERIAL YANG DIGUNAKAN", heading_style))
+        materials_data = [['No.', 'Material']]
+        for i, material in enumerate(order_obj['materials'], 1):
+            materials_data.append([str(i), material])
+
+        materials_table = Table(materials_data, colWidths=[1.5*cm, 12.5*cm])
+        materials_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ]))
+        story.append(materials_table)
+        story.append(Spacer(1, 20))
+
+    # Evidence section
+    if order_obj['evidenceFiles']:
+        story.append(Paragraph("FOTO EVIDENCE", heading_style))
+        for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
+            upload_time = "-"
+            try:
+                upload_time = datetime.fromisoformat(file_info['upload_time']).strftime('%d/%m/%Y %H:%M:%S')
+            except:
+                pass
+
+            story.append(Paragraph(f"{idx}. {file_info['original_name']} ({upload_time})", styles["Normal"]))
+            img_b64 = file_info.get("image_data")
+            if img_b64:
+                try:
+                    if "," in img_b64:
+                        img_b64 = img_b64.split(",")[1]
+                    img_bytes = base64.b64decode(img_b64)
+                    img_reader = ImageReader(BytesIO(img_bytes))
+                    img = Image(img_reader, width=10*cm, height=7*cm)
+                    img.hAlign = 'CENTER'
+                    story.append(Spacer(1, 5))
+                    story.append(img)
+                    story.append(Spacer(1, 15))
+                except Exception as e:
+                    print(f"Gagal load gambar: {e}")
+
+    # Footer
+    story.append(Spacer(1, 30))
+    footer_text = f"Laporan dibuat otomatis pada {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+    story.append(Paragraph(footer_text, styles['Normal']))
+
+    doc.build(story)
+    buffer.seek(0)
+    filename = f"{order_obj['type']}_{order_obj['orderId']}.pdf"
+    return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+    
 # Initialize database when module is loaded (works in production!)
 print("\n" + "🚀" * 30)
 print("STARTING FLASK APPLICATION")
