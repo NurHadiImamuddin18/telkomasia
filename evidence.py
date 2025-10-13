@@ -616,39 +616,35 @@ def download_pdf(order_id):
         "namaTeknisi": order["nama_teknisi"],
         "type": order["type"],
         "fotoCount": order["foto_count"],
-        "materials": json.loads(order["materials"]) if order["materials"] else [],
-        "evidenceFiles": []
+        "materials": json.loads(order["materials"]) if order["materials"] else []
     }
 
     # Ambil foto evidence
     if order["type"] == "DW":
-        cursor.execute("SELECT caption AS original_name, image_data FROM photos WHERE order_id=%s ORDER BY photo_index", (order_id,))
+        cursor.execute("SELECT caption AS caption, image_data FROM photos WHERE order_id=%s ORDER BY photo_index", (order_id,))
     else:
-        cursor.execute("SELECT photo_key AS original_name, image_data FROM fat_photos WHERE order_id=%s", (order_id,))
-    evidence_files = cursor.fetchall()
+        cursor.execute("SELECT photo_key AS caption, image_data FROM fat_photos WHERE order_id=%s", (order_id,))
+    fotos = cursor.fetchall()
+
     cursor.close()
     conn.close()
 
-    for f in evidence_files:
-        order_obj["evidenceFiles"].append({
-            "original_name": f.get("original_name", ""),
-            "image_data": f.get("image_data")
-        })
-
+    # --- MULAI GENERATE PDF DENGAN CANVAS ---
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
+    margin = 50
+    y = height - 80
 
     # Judul utama
-    p.setFont("Helvetica-Bold", 16)
-    p.drawCentredString(width / 2, height - 80, f"LAPORAN {order_obj['type']} - {order_obj['orderId']}")
+    p.setFont("Helvetica-Bold", 18)
+    p.drawCentredString(width / 2, y, f"LAPORAN {order_obj['type']} - {order_obj['orderId']}")
+    y -= 40
 
     # Informasi dasar
-    y = height - 120
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, y, "INFORMASI DASAR")
+    p.setFont("Helvetica-Bold", 13)
+    p.drawString(margin, y, "INFORMASI DASAR")
     y -= 20
-
     p.setFont("Helvetica", 11)
     info = [
         ("Order ID", order_obj['orderId']),
@@ -657,111 +653,105 @@ def download_pdf(order_id):
         ("Jumlah Foto Evidence", str(order_obj['fotoCount']))
     ]
     for key, val in info:
-        p.drawString(60, y, f"{key}: {val}")
-        y -= 18
+        p.drawString(margin + 10, y, f"{key}: {val}")
+        y -= 16
 
     # Material
     if order_obj['materials']:
         y -= 20
-        p.setFont("Helvetica-Bold", 12)
-        p.drawString(50, y, "MATERIAL YANG DIGUNAKAN")
+        p.setFont("Helvetica-Bold", 13)
+        p.drawString(margin, y, "MATERIAL YANG DIGUNAKAN")
         y -= 20
         p.setFont("Helvetica", 11)
         for i, material in enumerate(order_obj['materials'], 1):
-            p.drawString(60, y, f"{i}. {material}")
-            y -= 16
+            p.drawString(margin + 10, y, f"{i}. {material}")
+            y -= 15
 
-    # Foto Evidence
+    # FOTO EVIDENCE DALAM TABEL
     y -= 30
     p.setFont("Helvetica-Bold", 13)
-    p.drawString(50, y, "FOTO EVIDENCE:")
+    p.drawString(margin, y, "FOTO EVIDENCE")
     y -= 25
 
     # Header tabel
-    p.setFillColor(colors.HexColor("#1a3d7c"))
-    p.rect(50, y, width - 100, 20, fill=True, stroke=False)
-    p.setFillColor(colors.white)
-    p.setFont("Helvetica-Bold", 11)
-    p.drawString(60, y + 5, "No.")
-    p.drawString(100, y + 5, "Foto Evidence")
-    p.drawString(width - 220, y + 5, "Keterangan Foto")
-    y -= 25
+    header_height = 20
+    table_x = margin
+    table_width = width - 2 * margin
+    col_widths = [30, 200, table_width - 230]  # No, Foto, Keterangan
 
-    # Ambil foto dari database
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    if order_obj['type'] == 'DW':
-        cursor.execute('SELECT caption AS caption, image_data FROM photos WHERE order_id = %s ORDER BY photo_index', (order_id,))
-    else:
-        cursor.execute('SELECT photo_key AS caption, image_data FROM fat_photos WHERE order_id = %s', (order_id,))
-    fotos = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    def draw_header(y_pos):
+        p.setFillColor(colors.HexColor("#1a3d7c"))
+        p.rect(table_x, y_pos - header_height, table_width, header_height, fill=True, stroke=False)
+        p.setFillColor(colors.white)
+        p.setFont("Helvetica-Bold", 11)
+        p.drawString(table_x + 10, y_pos - 15, "No.")
+        p.drawString(table_x + 50, y_pos - 15, "Foto Evidence")
+        p.drawString(table_x + 270, y_pos - 15, "Keterangan Foto")
+        return y_pos - header_height
 
+    y = draw_header(y)
+
+    # Isi tabel foto
+    row_height = 100
+    p.setFont("Helvetica", 10)
     no = 1
-    for f in fotos:
-        img_b64 = f.get('image_data')
-        caption = f.get('caption', '')
+
+    for foto in fotos:
+        img_b64 = foto.get("image_data")
+        caption = foto.get("caption", "-")
+
         if not img_b64:
             continue
 
+        # Pastikan cukup ruang di halaman
+        if y - row_height < 80:
+            p.showPage()
+            y = height - 80
+            p.setFont("Helvetica-Bold", 13)
+            p.drawString(margin, y, "FOTO EVIDENCE (lanjutan)")
+            y -= 25
+            y = draw_header(y)
+
+        # Gambar background baris
+        p.setFillColor(colors.HexColor("#f9f9f9") if no % 2 == 0 else colors.white)
+        p.rect(table_x, y - row_height, table_width, row_height, fill=True, stroke=True)
+
+        # Nomor
+        p.setFillColor(colors.black)
+        p.drawCentredString(table_x + col_widths[0] / 2, y - row_height / 2, str(no))
+
+        # Gambar foto
         try:
-            # Hapus prefix base64 jika ada
             if isinstance(img_b64, str) and img_b64.startswith("data:image"):
                 img_b64 = img_b64.split(",")[1]
-            img_b64 = img_b64.replace("\n", "").replace(" ", "")
             img_bytes = base64.b64decode(img_b64)
             img_reader = ImageReader(BytesIO(img_bytes))
+            img_w, img_h = 5.5 * cm, 4 * cm
+            p.drawImage(img_reader, table_x + 40, y - row_height + 20, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
         except Exception as e:
-            print(f"⚠️ Gagal decode gambar: {e}")
-            continue
+            print(f"⚠️ Gagal tampilkan gambar: {e}")
+            p.drawString(table_x + 40, y - 50, "(Gagal memuat foto)")
 
-        img_width = 5.5 * cm
-        img_height = 4 * cm
-
-        # Cek kalau halaman hampir habis
-        if y - img_height < 100:
-            p.showPage()
-            y = height - 100
-            p.setFont("Helvetica-Bold", 13)
-            p.drawString(50, y, "FOTO EVIDENCE (lanjutan):")
-            y -= 25
-
-            # Header tabel ulang
-            p.setFillColor(colors.HexColor("#1a3d7c"))
-            p.rect(50, y, width - 100, 20, fill=True, stroke=False)
-            p.setFillColor(colors.white)
-            p.setFont("Helvetica-Bold", 11)
-            p.drawString(60, y + 5, "No.")
-            p.drawString(100, y + 5, "Foto Evidence")
-            p.drawString(width - 220, y + 5, "Keterangan Foto")
-            y -= 25
-
-        # Kolom No.
-        p.setFillColor(colors.black)
+        # Keterangan foto
         p.setFont("Helvetica", 10)
-        p.drawString(60, y + img_height / 2, str(no))
+        p.drawString(table_x + 270, y - row_height / 2, caption[:80])
 
-        # Kolom Foto
-        p.drawImage(img_reader, 100, y - img_height / 2, width=6 * cm, height=img_height, preserveAspectRatio=True, mask='auto')
-
-        # Kolom Keterangan
-        p.drawString(width - 220, y + img_height / 2, caption[:50])
-
-        # Garis bawah baris
+        # Garis pemisah
         p.setStrokeColor(colors.grey)
-        p.line(50, y - 10, width - 50, y - 10)
-        y -= img_height + 30
+        p.line(table_x, y - row_height, table_x + table_width, y - row_height)
+
+        y -= row_height
         no += 1
 
     # Footer
     p.setFont("Helvetica", 9)
-    p.drawString(50, 50, f"Dibuat otomatis pada {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+    p.drawString(margin, 40, f"Dibuat otomatis pada {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
     p.save()
     buffer.seek(0)
     filename = f"{order_obj['type']}_{order_obj['orderId']}.pdf"
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
+
 # Initialize database when module is loaded (works in production!)
 print("\n" + "🚀" * 30)
 print("STARTING FLASK APPLICATION")
