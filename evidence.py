@@ -711,66 +711,44 @@ def download_pdf(order_id):
         story.append(materials_table)
         story.append(Spacer(1, 20))
 
-    # Evidence section - FIXED INDENTATION!
     if order_obj['evidenceFiles']:
         story.append(Paragraph("FOTO EVIDENCE", heading_style))
-        
-        # Header tabel hanya sekali di awal
         evidence_data = [['No.', 'Foto Evidence', 'Keterangan Foto']]
-        
-        # Loop untuk setiap foto - HARUS DI DALAM if block!
+    
         for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
             img_data = file_info.get("image_data")
             caption = file_info.get("original_name", "-")
-            
+    
             foto_elemen = None
-            
             if img_data:
                 try:
-                    print(f"📸 Processing image {idx}")
-                    
-                    # Kalau image_data berisi base64 lengkap dengan prefix
                     if isinstance(img_data, str):
-                        print(f"   Type: string, Length: {len(img_data)}")
-                        print(f"   First 50 chars: {img_data[:50]}")
-                        
-                        # Hapus prefix "data:image/xxx;base64,"
-                        if "," in img_data:
-                            img_data = img_data.split(",", 1)[1]
-                            print(f"   After split: {len(img_data)} chars")
-                        
-                        # Decode base64
+                        if img_data.startswith("data:image"):
+                            img_data = img_data.split(",")[1]
                         img_bytes = base64.b64decode(img_data)
-                        print(f"   ✅ Decoded to {len(img_bytes)} bytes")
-                    
-                    # Jika bytes (BLOB)
                     elif isinstance(img_data, (bytes, bytearray)):
-                        print(f"   Type: bytes, Length: {len(img_data)}")
                         img_bytes = img_data
                     else:
-                        raise ValueError(f"Unknown image data type: {type(img_data)}")
-                    
-                    # Create image
+                        raise ValueError("Format data gambar tidak dikenali")
+    
                     img_reader = ImageReader(BytesIO(img_bytes))
                     foto_elemen = Image(img_reader, width=6.5*cm, height=4.5*cm)
                     foto_elemen.hAlign = 'CENTER'
-                    print(f"   ✅ Image created successfully")
-                    
+                    print(f"Berhasil load gambar index {idx} ({len(img_bytes)} bytes)")
+    
                 except Exception as e:
-                    print(f"   ❌ Error: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    print(f"Gagal load gambar index {idx}: {e}")
                     foto_elemen = Paragraph("(Gagal menampilkan gambar)", styles["Normal"])
             else:
-                print(f"⚠️  No image data for index {idx}")
                 foto_elemen = Paragraph("(Tidak ada gambar)", styles["Normal"])
-            
-            # Tambahkan baris ke tabel
-            evidence_data.append([
-                str(idx),
-                foto_elemen,
-                Paragraph(caption, styles["Normal"])
-            ])
+    
+            evidence_data.append([str(idx), foto_elemen, Paragraph(caption, styles["Normal"])])
+                # Tambahkan baris ke tabel
+                evidence_data.append([
+                    str(idx),
+                    foto_elemen,
+                    Paragraph(caption, styles["Normal"])
+                ])
         
         # Buat tabel setelah semua baris terkumpul - MASIH DI DALAM if block!
         evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
