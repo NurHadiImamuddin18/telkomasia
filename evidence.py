@@ -599,16 +599,10 @@ def test_image(photo_id):
 @app.route('/api/download-pdf/<int:order_id>', methods=['GET'])
 def download_pdf(order_id):
     conn = get_db()
-    if not conn:
-        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
-
     cursor = conn.cursor(dictionary=True)
     cursor.execute('SELECT * FROM orders WHERE id = %s', (order_id,))
     order = cursor.fetchone()
-
     if not order:
-        cursor.close()
-        conn.close()
         return jsonify({'success': False, 'message': 'Order not found'}), 404
 
     order_obj = {
@@ -625,11 +619,10 @@ def download_pdf(order_id):
     else:
         cursor.execute("SELECT photo_key AS caption, image_data FROM fat_photos WHERE order_id=%s", (order_id,))
     fotos = cursor.fetchall()
-
     cursor.close()
     conn.close()
 
-    # --- MULAI GENERATE PDF DENGAN CANVAS ---
+    # --- MULAI GENERATE PDF ---
     buffer = BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
@@ -667,17 +660,18 @@ def download_pdf(order_id):
             p.drawString(margin + 10, y, f"{i}. {material}")
             y -= 15
 
-    # FOTO EVIDENCE DALAM TABEL
+    # FOTO EVIDENCE
     y -= 30
     p.setFont("Helvetica-Bold", 13)
     p.drawString(margin, y, "FOTO EVIDENCE")
-    y -= 25
+    y -= 20
 
     # Header tabel
-    header_height = 20
     table_x = margin
     table_width = width - 2 * margin
-    col_widths = [30, 200, table_width - 230]  # No, Foto, Keterangan
+    col_widths = [2*cm, 8*cm, 6.5*cm]
+    row_height = 5*cm  # tinggi per baris (cukup untuk 1 foto)
+    header_height = 20
 
     def draw_header(y_pos):
         p.setFillColor(colors.HexColor("#1a3d7c"))
@@ -685,17 +679,15 @@ def download_pdf(order_id):
         p.setFillColor(colors.white)
         p.setFont("Helvetica-Bold", 11)
         p.drawString(table_x + 10, y_pos - 15, "No.")
-        p.drawString(table_x + 50, y_pos - 15, "Foto Evidence")
-        p.drawString(table_x + 270, y_pos - 15, "Keterangan Foto")
+        p.drawString(table_x + col_widths[0] + 10, y_pos - 15, "Foto Evidence")
+        p.drawString(table_x + col_widths[0] + col_widths[1] + 10, y_pos - 15, "Keterangan Foto")
         return y_pos - header_height
 
     y = draw_header(y)
-
-    # Isi tabel foto
-    row_height = 100
     p.setFont("Helvetica", 10)
-    no = 1
+    p.setFillColor(colors.black)
 
+    no = 1
     for foto in fotos:
         img_b64 = foto.get("image_data")
         caption = foto.get("caption", "-")
@@ -703,42 +695,42 @@ def download_pdf(order_id):
         if not img_b64:
             continue
 
-        # Pastikan cukup ruang di halaman
+        # Jika hampir habis halaman
         if y - row_height < 80:
             p.showPage()
             y = height - 80
             p.setFont("Helvetica-Bold", 13)
             p.drawString(margin, y, "FOTO EVIDENCE (lanjutan)")
-            y -= 25
+            y -= 20
             y = draw_header(y)
+            p.setFont("Helvetica", 10)
 
-        # Gambar background baris
-        p.setFillColor(colors.HexColor("#f9f9f9") if no % 2 == 0 else colors.white)
-        p.rect(table_x, y - row_height, table_width, row_height, fill=True, stroke=True)
+        # Gambar border baris
+        p.setStrokeColor(colors.grey)
+        p.rect(table_x, y - row_height, table_width, row_height, stroke=True, fill=False)
 
-        # Nomor
-        p.setFillColor(colors.black)
+        # Nomor urut
         p.drawCentredString(table_x + col_widths[0] / 2, y - row_height / 2, str(no))
 
-        # Gambar foto
+        # Gambar foto di kolom tengah
         try:
             if isinstance(img_b64, str) and img_b64.startswith("data:image"):
                 img_b64 = img_b64.split(",")[1]
             img_bytes = base64.b64decode(img_b64)
             img_reader = ImageReader(BytesIO(img_bytes))
-            img_w, img_h = 5.5 * cm, 4 * cm
-            p.drawImage(img_reader, table_x + 40, y - row_height + 20, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+
+            img_w = col_widths[1] - 20
+            img_h = row_height - 25
+            x_img = table_x + col_widths[0] + 10
+            y_img = y - row_height + 10
+
+            p.drawImage(img_reader, x_img, y_img, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
         except Exception as e:
-            print(f"⚠️ Gagal tampilkan gambar: {e}")
-            p.drawString(table_x + 40, y - 50, "(Gagal memuat foto)")
+            print(f"⚠️ Gagal render foto {no}: {e}")
+            p.drawString(table_x + col_widths[0] + 20, y - row_height / 2, "(Foto tidak valid)")
 
         # Keterangan foto
-        p.setFont("Helvetica", 10)
-        p.drawString(table_x + 270, y - row_height / 2, caption[:80])
-
-        # Garis pemisah
-        p.setStrokeColor(colors.grey)
-        p.line(table_x, y - row_height, table_x + table_width, y - row_height)
+        p.drawString(table_x + col_widths[0] + col_widths[1] + 10, y - row_height / 2, caption[:80])
 
         y -= row_height
         no += 1
