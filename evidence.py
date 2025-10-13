@@ -712,61 +712,56 @@ def download_pdf(order_id):
         story.append(Spacer(1, 20))
 
     if order_obj['evidenceFiles']:
-        story.append(Paragraph("FOTO EVIDENCE", heading_style))
-        evidence_data = [['No.', 'Foto Evidence', 'Keterangan Foto']]
-    
-        for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
-            img_data = file_info.get("image_data")
-            caption = file_info.get("original_name", "-")
-    
-            foto_elemen = None
-            if img_data:
-                try:
-                    if isinstance(img_data, str):
-                        if img_data.startswith("data:image"):
-                            img_data = img_data.split(",")[1]
-                        img_bytes = base64.b64decode(img_data)
-                    elif isinstance(img_data, (bytes, bytearray)):
-                        img_bytes = img_data
-                    else:
-                        raise ValueError("Format data gambar tidak dikenali")
-    
-                    img_reader = ImageReader(BytesIO(img_bytes))
-                    foto_elemen = Image(img_reader, width=6.5*cm, height=4.5*cm)
-                    foto_elemen.hAlign = 'CENTER'
-                    print(f"Berhasil load gambar index {idx} ({len(img_bytes)} bytes)")
-    
-                except Exception as e:
-                    print(f"Gagal load gambar index {idx}: {e}")
-                    foto_elemen = Paragraph("(Gagal menampilkan gambar)", styles["Normal"])
-            else:
-                foto_elemen = Paragraph("(Tidak ada gambar)", styles["Normal"])
-    
-            evidence_data.append([str(idx), foto_elemen, Paragraph(caption, styles["Normal"])])
-                # Tambahkan baris ke tabel
-                evidence_data.append([
-                    str(idx),
-                    foto_elemen,
-                    Paragraph(caption, styles["Normal"])
-                ])
-        
-        # Buat tabel setelah semua baris terkumpul - MASIH DI DALAM if block!
-        evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
-        evidence_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-            ('ALIGN', (1, 1), (1, -1), 'CENTER'),
-            ('ALIGN', (2, 1), (2, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 8)
-        ]))
-        story.append(evidence_table)
+    story.append(Paragraph("FOTO EVIDENCE", heading_style))
+    evidence_data = [['No.', 'Foto Evidence', 'Keterangan Foto']]
 
+    for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
+        img_data = file_info.get("image_data")
+        caption = file_info.get("original_name", "-")
+
+        foto_elemen = None
+        if img_data:
+            try:
+                if isinstance(img_data, str):
+                    if img_data.startswith("data:image"):
+                        img_data = img_data.split(",")[1]
+                    img_data = img_data.replace("\n", "").replace(" ", "")
+                    img_bytes = base64.b64decode(img_data)
+                elif isinstance(img_data, (bytes, bytearray)):
+                    img_bytes = img_data
+                else:
+                    raise ValueError("Format data gambar tidak dikenali")
+
+                img_reader = ImageReader(BytesIO(img_bytes))
+                foto_elemen = Image(img_reader, width=6.5*cm, height=4.5*cm)
+                foto_elemen.hAlign = 'CENTER'
+                print(f"✅ Gambar index {idx} berhasil dibaca ({len(img_bytes)} bytes)")
+
+            except Exception as e:
+                print(f"❌ Gagal load gambar index {idx}: {e}")
+                foto_elemen = Paragraph("(Gagal menampilkan gambar)", styles["Normal"])
+        else:
+            foto_elemen = Paragraph("(Tidak ada gambar)", styles["Normal"])
+
+        # hanya satu kali append
+        evidence_data.append([str(idx), foto_elemen, Paragraph(caption, styles["Normal"])])
+
+    # tabel dibuat setelah loop, masih di dalam blok if
+    evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
+    evidence_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (1, 1), (1, -1), 'CENTER'),
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8)
+    ]))
+    story.append(evidence_table)
     # Footer
     story.append(Spacer(1, 30))
     footer_text = f"Laporan dibuat otomatis pada {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
