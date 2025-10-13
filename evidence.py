@@ -635,153 +635,133 @@ def download_pdf(order_id):
             "image_data": f.get("image_data")
         })
 
-    # --- Generate PDF ---
     buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=2*cm,
-        leftMargin=2*cm,
-        topMargin=2*cm,
-        bottomMargin=2*cm
-    )
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
 
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=18,
-        textColor=colors.HexColor('#1a3d7c'),
-        alignment=TA_CENTER,
-        spaceAfter=30
-    )
+    # Judul utama
+    p.setFont("Helvetica-Bold", 16)
+    p.drawCentredString(width / 2, height - 80, f"LAPORAN {order_obj['type']} - {order_obj['orderId']}")
 
-    heading_style = ParagraphStyle(
-        'CustomHeading',
-        parent=styles['Heading2'],
-        fontSize=14,
-        textColor=colors.HexColor('#1a3d7c'),
-        spaceBefore=20,
-        spaceAfter=10
-    )
+    # Informasi dasar
+    y = height - 120
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, y, "INFORMASI DASAR")
+    y -= 20
 
-    story = []
-
-    # Title
-    title = Paragraph(f"LAPORAN {order_obj['type']} - {order_obj['orderId']}", title_style)
-    story.append(title)
-
-    # Basic info
-    story.append(Paragraph("INFORMASI DASAR", heading_style))
-    basic_data = [
-        ['Order ID', order_obj['orderId']],
-        ['Nama Teknisi', order_obj['namaTeknisi']],
-        ['Tipe Pekerjaan', order_obj['type']],
-        ['Jumlah Foto Evidence', str(order_obj['fotoCount'])]
+    p.setFont("Helvetica", 11)
+    info = [
+        ("Order ID", order_obj['orderId']),
+        ("Nama Teknisi", order_obj['namaTeknisi']),
+        ("Tipe Pekerjaan", order_obj['type']),
+        ("Jumlah Foto Evidence", str(order_obj['fotoCount']))
     ]
-    basic_table = Table(basic_data, colWidths=[4*cm, 10*cm])
-    basic_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f5f7fa')),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP')
-    ]))
-    story.append(basic_table)
-    story.append(Spacer(1, 20))
+    for key, val in info:
+        p.drawString(60, y, f"{key}: {val}")
+        y -= 18
 
-    # Materials
+    # Material
     if order_obj['materials']:
-        story.append(Paragraph("MATERIAL YANG DIGUNAKAN", heading_style))
-        materials_data = [['No.', 'Material']]
+        y -= 20
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(50, y, "MATERIAL YANG DIGUNAKAN")
+        y -= 20
+        p.setFont("Helvetica", 11)
         for i, material in enumerate(order_obj['materials'], 1):
-            materials_data.append([str(i), material])
+            p.drawString(60, y, f"{i}. {material}")
+            y -= 16
 
-        materials_table = Table(materials_data, colWidths=[1.5*cm, 12.5*cm])
-        materials_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ]))
-        story.append(materials_table)
-        story.append(Spacer(1, 20))
+    # Foto Evidence
+    y -= 30
+    p.setFont("Helvetica-Bold", 13)
+    p.drawString(50, y, "FOTO EVIDENCE:")
+    y -= 25
 
-    if order_obj['evidenceFiles']:
-        story.append(Paragraph("FOTO EVIDENCE", heading_style))
-    evidence_data = [['No.', 'Foto Evidence', 'Keterangan Foto']]
+    # Header tabel
+    p.setFillColor(colors.HexColor("#1a3d7c"))
+    p.rect(50, y, width - 100, 20, fill=True, stroke=False)
+    p.setFillColor(colors.white)
+    p.setFont("Helvetica-Bold", 11)
+    p.drawString(60, y + 5, "No.")
+    p.drawString(100, y + 5, "Foto Evidence")
+    p.drawString(width - 220, y + 5, "Keterangan Foto")
+    y -= 25
 
-    for idx, file_info in enumerate(order_obj['evidenceFiles'], 1):
-        img_data = file_info.get("image_data")
-        caption = file_info.get("original_name", "-")
+    # Ambil foto dari database
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    if order_obj['type'] == 'DW':
+        cursor.execute('SELECT caption AS caption, image_data FROM photos WHERE order_id = %s ORDER BY photo_index', (order_id,))
+    else:
+        cursor.execute('SELECT photo_key AS caption, image_data FROM fat_photos WHERE order_id = %s', (order_id,))
+    fotos = cursor.fetchall()
+    cursor.close()
+    conn.close()
 
-        foto_elemen = None
-        if img_data:
-            try:
-                if isinstance(img_data, str):
-                    if img_data.startswith("data:image"):
-                        img_data = img_data.split(",")[1]
-                    img_data = img_data.replace("\n", "").replace(" ", "")
-                    img_bytes = base64.b64decode(img_data)
-                elif isinstance(img_data, (bytes, bytearray)):
-                    img_bytes = img_data
-                else:
-                    raise ValueError("Format data gambar tidak dikenali")
+    no = 1
+    for f in fotos:
+        img_b64 = f.get('image_data')
+        caption = f.get('caption', '')
+        if not img_b64:
+            continue
 
-                img_reader = ImageReader(BytesIO(img_bytes))
-                foto_elemen = Image(img_reader, width=6.5*cm, height=4.5*cm)
-                foto_elemen.hAlign = 'CENTER'
-                print(f"✅ Gambar index {idx} berhasil dibaca ({len(img_bytes)} bytes)")
+        try:
+            # Hapus prefix base64 jika ada
+            if isinstance(img_b64, str) and img_b64.startswith("data:image"):
+                img_b64 = img_b64.split(",")[1]
+            img_b64 = img_b64.replace("\n", "").replace(" ", "")
+            img_bytes = base64.b64decode(img_b64)
+            img_reader = ImageReader(BytesIO(img_bytes))
+        except Exception as e:
+            print(f"⚠️ Gagal decode gambar: {e}")
+            continue
 
-            except Exception as e:
-                print(f"❌ Gagal load gambar index {idx}: {e}")
-                foto_elemen = Paragraph("(Gagal menampilkan gambar)", styles["Normal"])
-        else:
-            foto_elemen = Paragraph("(Tidak ada gambar)", styles["Normal"])
+        img_width = 5.5 * cm
+        img_height = 4 * cm
 
-        # hanya satu kali append
-        evidence_data.append([str(idx), foto_elemen, Paragraph(caption, styles["Normal"])])
+        # Cek kalau halaman hampir habis
+        if y - img_height < 100:
+            p.showPage()
+            y = height - 100
+            p.setFont("Helvetica-Bold", 13)
+            p.drawString(50, y, "FOTO EVIDENCE (lanjutan):")
+            y -= 25
 
-    # tabel dibuat setelah loop, masih di dalam blok if
-    evidence_table = Table(evidence_data, colWidths=[1.2*cm, 8*cm, 5*cm])
-    evidence_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a3d7c')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-        ('ALIGN', (1, 1), (1, -1), 'CENTER'),
-        ('ALIGN', (2, 1), (2, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8)
-    ]))
-    story.append(evidence_table)
+            # Header tabel ulang
+            p.setFillColor(colors.HexColor("#1a3d7c"))
+            p.rect(50, y, width - 100, 20, fill=True, stroke=False)
+            p.setFillColor(colors.white)
+            p.setFont("Helvetica-Bold", 11)
+            p.drawString(60, y + 5, "No.")
+            p.drawString(100, y + 5, "Foto Evidence")
+            p.drawString(width - 220, y + 5, "Keterangan Foto")
+            y -= 25
+
+        # Kolom No.
+        p.setFillColor(colors.black)
+        p.setFont("Helvetica", 10)
+        p.drawString(60, y + img_height / 2, str(no))
+
+        # Kolom Foto
+        p.drawImage(img_reader, 100, y - img_height / 2, width=6 * cm, height=img_height, preserveAspectRatio=True, mask='auto')
+
+        # Kolom Keterangan
+        p.drawString(width - 220, y + img_height / 2, caption[:50])
+
+        # Garis bawah baris
+        p.setStrokeColor(colors.grey)
+        p.line(50, y - 10, width - 50, y - 10)
+        y -= img_height + 30
+        no += 1
+
     # Footer
-    story.append(Spacer(1, 30))
-    footer_text = f"Laporan dibuat otomatis pada {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
-    story.append(Paragraph(footer_text, styles['Normal']))
+    p.setFont("Helvetica", 9)
+    p.drawString(50, 50, f"Dibuat otomatis pada {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
-    # Build PDF
-    try:
-        doc.build(story)
-        print("✅ PDF built successfully")
-    except Exception as e:
-        print(f"❌ Error building PDF: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'message': f'PDF generation failed: {str(e)}'}), 500
-    
+    p.save()
     buffer.seek(0)
     filename = f"{order_obj['type']}_{order_obj['orderId']}.pdf"
-    
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
-    
 # Initialize database when module is loaded (works in production!)
 print("\n" + "🚀" * 30)
 print("STARTING FLASK APPLICATION")
