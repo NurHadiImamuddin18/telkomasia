@@ -4,7 +4,7 @@ from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, Image, PageBreak
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
@@ -719,6 +719,7 @@ def download_pdf(order_id):
         elements.append(Spacer(1, 20))
 
     # === FOTO EVIDENCE ===
+    elements.append(PageBreak())
     elements.append(Paragraph("FOTO EVIDENCE", heading_style))
     elements.append(Spacer(1, 10))
 
