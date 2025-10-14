@@ -697,13 +697,26 @@ def download_pdf(order_id):
 
         # Jika hampir habis halaman
         if y - row_height < 80:
+            # Ganti halaman
             p.showPage()
+
+            # Re-set layout parameter setelah showPage()
+            width, height = A4
+            table_x = margin
+            table_width = width - 2 * margin
+            col_widths = [2*cm, 8*cm, 6.5*cm]
+            row_height = 5*cm
+
+            # Judul lanjutan
             y = height - 80
             p.setFont("Helvetica-Bold", 13)
             p.drawString(margin, y, "FOTO EVIDENCE (lanjutan)")
             y -= 20
+
+            # Header tabel baru di halaman ini
             y = draw_header(y)
             p.setFont("Helvetica", 10)
+
 
         # Gambar border baris
         p.setStrokeColor(colors.grey)
@@ -713,33 +726,21 @@ def download_pdf(order_id):
         p.drawCentredString(table_x + col_widths[0] / 2, y - row_height / 2, str(no))
 
         # Gambar foto di kolom tengah
-        # Gambar foto di kolom tengah
         try:
-            # Bersihkan data base64 agar tidak error
-            img_b64 = img_b64.strip().replace('\n', '').replace('\r', '')
-            if "base64," in img_b64:
-                img_b64 = img_b64.split("base64,")[-1]
-
-            # Decode base64 ke bytes
+            if isinstance(img_b64, str) and img_b64.startswith("data:image"):
+                img_b64 = img_b64.split(",")[1]
             img_bytes = base64.b64decode(img_b64)
             img_reader = ImageReader(BytesIO(img_bytes))
 
-            # Ukuran dan posisi gambar (dibetulkan agar tampil)
             img_w = col_widths[1] - 20
             img_h = row_height - 25
             x_img = table_x + col_widths[0] + 10
+            y_img = y - row_height + 10
 
-            # 🔧 Koreksi posisi vertikal gambar agar tidak keluar halaman
-            y_img = y - row_height + (row_height - img_h) / 2
-
-            # Gambar ke PDF
-            p.drawImage(img_reader, x_img, y_img, width=img_w, height=img_h, mask='auto')
-
+            p.drawImage(img_reader, x_img, y_img, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
         except Exception as e:
             print(f"⚠️ Gagal render foto {no}: {e}")
-            p.setFont("Helvetica-Oblique", 10)
             p.drawString(table_x + col_widths[0] + 20, y - row_height / 2, "(Foto tidak valid)")
-
 
         # Keterangan foto
         p.drawString(table_x + col_widths[0] + col_widths[1] + 10, y - row_height / 2, caption[:80])
