@@ -741,8 +741,8 @@ def download_pdf(order_id):
             img = Image(BytesIO(img_bytes))
             
             # Set ukuran foto (max width 14cm, max height 10cm)
-            img.drawWidth = 6*cm
-            img.drawHeight = 8*cm
+            img.drawWidth = 6.5*cm
+            img.drawHeight = 9*cm
             img.hAlign = 'CENTER'
             
             # Buat tabel untuk foto dan keterangan
