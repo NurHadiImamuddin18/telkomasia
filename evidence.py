@@ -622,137 +622,172 @@ def download_pdf(order_id):
     cursor.close()
     conn.close()
 
-    # --- MULAI GENERATE PDF ---
+    # --- GENERATE PDF DENGAN PLATYPUS (LEBIH RAPI) ---
     buffer = BytesIO()
-    p = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    margin = 50
-    y = height - 80
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=50,
+        bottomMargin=50
+    )
+    
+    # Container untuk semua elemen PDF
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Style kustom
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#1a3d7c'),
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#1a3d7c'),
+        spaceAfter=12,
+        spaceBefore=20,
+        fontName='Helvetica-Bold'
+    )
+    
+    normal_style = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontSize=11,
+        spaceAfter=6
+    )
 
-    # Judul utama
-    p.setFont("Helvetica-Bold", 18)
-    p.drawCentredString(width / 2, y, f"LAPORAN {order_obj['type']} - {order_obj['orderId']}")
-    y -= 40
+    # === HEADER / JUDUL ===
+    title = Paragraph(f"LAPORAN {order_obj['type']} - {order_obj['orderId']}", title_style)
+    elements.append(title)
+    elements.append(Spacer(1, 10))
 
-    # Informasi dasar
-    p.setFont("Helvetica-Bold", 13)
-    p.drawString(margin, y, "INFORMASI DASAR")
-    y -= 20
-    p.setFont("Helvetica", 11)
-    info = [
-        ("Order ID", order_obj['orderId']),
-        ("Nama Teknisi", order_obj['namaTeknisi']),
-        ("Tipe Pekerjaan", order_obj['type']),
-        ("Jumlah Foto Evidence", str(order_obj['fotoCount']))
+    # === INFORMASI DASAR ===
+    elements.append(Paragraph("INFORMASI DASAR", heading_style))
+    
+    info_data = [
+        ['Order ID', ':', order_obj['orderId']],
+        ['Nama Teknisi', ':', order_obj['namaTeknisi']],
+        ['Tipe Pekerjaan', ':', order_obj['type']],
+        ['Jumlah Foto', ':', str(order_obj['fotoCount'])],
+        ['Tanggal', ':', datetime.now().strftime('%d/%m/%Y %H:%M:%S')]
     ]
-    for key, val in info:
-        p.drawString(margin + 10, y, f"{key}: {val}")
-        y -= 16
+    
+    info_table = Table(info_data, colWidths=[3.5*cm, 0.5*cm, 12*cm])
+    info_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1a3d7c')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+    ]))
+    
+    elements.append(info_table)
+    elements.append(Spacer(1, 15))
 
-    # Material
+    # === MATERIAL ===
     if order_obj['materials']:
-        y -= 20
-        p.setFont("Helvetica-Bold", 13)
-        p.drawString(margin, y, "MATERIAL YANG DIGUNAKAN")
-        y -= 20
-        p.setFont("Helvetica", 11)
-        for i, material in enumerate(order_obj['materials'], 1):
-            p.drawString(margin + 10, y, f"{i}. {material}")
-            y -= 15
+        elements.append(Paragraph("MATERIAL YANG DIGUNAKAN", heading_style))
+        
+        material_data = [[str(i), material] for i, material in enumerate(order_obj['materials'], 1)]
+        
+        material_table = Table(material_data, colWidths=[1*cm, 15*cm])
+        material_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+        ]))
+        
+        elements.append(material_table)
+        elements.append(Spacer(1, 20))
 
-    # FOTO EVIDENCE
-    y -= 30
-    p.setFont("Helvetica-Bold", 13)
-    p.drawString(margin, y, "FOTO EVIDENCE")
-    y -= 20
+    # === FOTO EVIDENCE ===
+    elements.append(Paragraph("FOTO EVIDENCE", heading_style))
+    elements.append(Spacer(1, 10))
 
-    # Header tabel
-    table_x = margin
-    table_width = width - 2 * margin
-    col_widths = [2*cm, 8*cm, 6.5*cm]
-    row_height = 5*cm  # tinggi per baris (cukup untuk 1 foto)
-    header_height = 20
-
-    def draw_header(y_pos):
-        p.setFillColor(colors.HexColor("#1a3d7c"))
-        p.rect(table_x, y_pos - header_height, table_width, header_height, fill=True, stroke=False)
-        p.setFillColor(colors.white)
-        p.setFont("Helvetica-Bold", 11)
-        p.drawString(table_x + 10, y_pos - 15, "No.")
-        p.drawString(table_x + col_widths[0] + 10, y_pos - 15, "Foto Evidence")
-        p.drawString(table_x + col_widths[0] + col_widths[1] + 10, y_pos - 15, "Keterangan Foto")
-        return y_pos - header_height
-
-    y = draw_header(y)
-    p.setFont("Helvetica", 10)
-    p.setFillColor(colors.black)
-
-    no = 1
-    for foto in fotos:
+    # Proses setiap foto
+    for idx, foto in enumerate(fotos, 1):
         img_b64 = foto.get("image_data")
         caption = foto.get("caption", "-")
 
         if not img_b64:
             continue
 
-        # Jika hampir habis halaman
-        if y - row_height < 80:
-            # Ganti halaman
-            p.showPage()
-
-            # Re-set layout parameter setelah showPage()
-            width, height = A4
-            table_x = margin
-            table_width = width - 2 * margin
-            col_widths = [2*cm, 8*cm, 6.5*cm]
-            row_height = 5*cm
-
-            # Judul lanjutan
-            y = height - 80
-            p.setFont("Helvetica-Bold", 13)
-            p.drawString(margin, y, "FOTO EVIDENCE (lanjutan)")
-            y -= 20
-
-            # Header tabel baru di halaman ini
-            y = draw_header(y)
-            p.setFont("Helvetica", 10)
-
-
-        # Gambar border baris
-        p.setStrokeColor(colors.grey)
-        p.rect(table_x, y - row_height, table_width, row_height, stroke=True, fill=False)
-
-        # Nomor urut
-        p.drawCentredString(table_x + col_widths[0] / 2, y - row_height / 2, str(no))
-
-        # Gambar foto di kolom tengah
         try:
-            if isinstance(img_b64, str) and img_b64.startswith("data:image"):
+            # Decode base64
+            if isinstance(img_b64, str) and "," in img_b64:
                 img_b64 = img_b64.split(",")[1]
             img_bytes = base64.b64decode(img_b64)
-            img_reader = ImageReader(BytesIO(img_bytes))
-
-            img_w = col_widths[1] - 20
-            img_h = row_height - 25
-            x_img = table_x + col_widths[0] + 10
-            y_img = y - row_height + 10
-
-            p.drawImage(img_reader, x_img, y_img, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+            
+            # Buat Image object dari ReportLab
+            img = Image(BytesIO(img_bytes))
+            
+            # Set ukuran foto (max width 14cm, max height 10cm)
+            img.drawWidth = 14*cm
+            img.drawHeight = 10*cm
+            img.hAlign = 'CENTER'
+            
+            # Buat tabel untuk foto dan keterangan
+            foto_data = [
+                [Paragraph(f"<b>Foto {idx}</b>", normal_style)],
+                [img],
+                [Paragraph(f"<i>Keterangan: {caption}</i>", normal_style)]
+            ]
+            
+            foto_table = Table(foto_data, colWidths=[16*cm])
+            foto_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+                ('BOX', (0, 0), (-1, -1), 1, colors.grey),
+                ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#e8f4f8')),
+                ('BACKGROUND', (0, 2), (0, 2), colors.HexColor('#f8f9fa')),
+            ]))
+            
+            elements.append(foto_table)
+            elements.append(Spacer(1, 20))
+            
         except Exception as e:
-            print(f"⚠️ Gagal render foto {no}: {e}")
-            p.drawString(table_x + col_widths[0] + 20, y - row_height / 2, "(Foto tidak valid)")
+            print(f"⚠️ Gagal render foto {idx}: {e}")
+            error_msg = Paragraph(f"<i>Foto {idx}: Gagal memuat gambar</i>", normal_style)
+            elements.append(error_msg)
+            elements.append(Spacer(1, 10))
 
-        # Keterangan foto
-        p.drawString(table_x + col_widths[0] + col_widths[1] + 10, y - row_height / 2, caption[:80])
+    # === FOOTER ===
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.grey,
+        alignment=TA_CENTER
+    )
+    elements.append(Spacer(1, 30))
+    footer_text = f"Dokumen dibuat otomatis pada {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+    elements.append(Paragraph(footer_text, footer_style))
 
-        y -= row_height
-        no += 1
-
-    # Footer
-    p.setFont("Helvetica", 9)
-    p.drawString(margin, 40, f"Dibuat otomatis pada {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-
-    p.save()
+    # Build PDF
+    doc.build(elements)
+    
     buffer.seek(0)
     filename = f"{order_obj['type']}_{order_obj['orderId']}.pdf"
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
