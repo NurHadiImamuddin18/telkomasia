@@ -42,22 +42,38 @@ load_dotenv()
 # ============================================
 # DATABASE CONFIGURATION
 # ============================================
+# ============================================
+# DATABASE CONFIGURATION - FIXED
+# ============================================
+from dotenv import load_dotenv
+from urllib.parse import urlparse
+import os
+
+load_dotenv()
+
 # Ambil MYSQL_URL dari environment variable
 MYSQL_URL = os.getenv("MYSQL_URL")
 
-# Jika MYSQL_URL tersedia (format: mysql://user:pass@host:port/database)
-if MYSQL_URL:
-    print("📌 Using MYSQL_URL for connection")
-    try:
-        # Parse URL menjadi komponen-komponen database
-        url = urlparse(MYSQL_URL)
-        DB_CONFIG = {
-            'host': url.hostname,  
-            'database': url.path.lstrip('/'), 
-            'user': url.username,  
-            'password': url.password, 
-            'port': url.port or 3306 
-        }
+if not MYSQL_URL:
+    raise ValueError("❌ MYSQL_URL environment variable is required! Please set it in Railway.")
+
+print("📌 Parsing MYSQL_URL for database connection")
+
+try:
+    url = urlparse(MYSQL_URL)
+    DB_CONFIG = {
+        'host': url.hostname,  
+        'database': url.path.lstrip('/'), 
+        'user': url.username,  
+        'password': url.password, 
+        'port': url.port or 3306 
+    }
+    print(f"✅ Database config loaded successfully")
+    print(f"   Host: {DB_CONFIG['host']}")
+    print(f"   Database: {DB_CONFIG['database']}")
+    print(f"   Port: {DB_CONFIG['port']}")
+except Exception as e:
+    raise ValueError(f"❌ Failed to parse MYSQL_URL: {e}")
 
 # ============================================
 # DECORATOR FUNCTIONS
